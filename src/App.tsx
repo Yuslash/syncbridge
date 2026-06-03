@@ -30,7 +30,8 @@ import {
   LogIn,
   Layers3,
   Lightbulb,
-  Zap
+  Zap,
+  X
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -89,6 +90,7 @@ export default function App() {
 
   // Filters state
   const [activeFilter, setActiveFilter] = useState<'all' | 'matched' | 'unresolved'>('all');
+  const [previewVideo, setPreviewVideo] = useState<MatchedTrack | null>(null);
 
   // Action Modals State
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -1195,6 +1197,7 @@ export default function App() {
                           onUpdateTrack={handleUpdateTrack}
                           onSearchAgain={triggerSearchForTrack}
                           isSearchingRow={!!searchIndicesInProgress[track.id]}
+                          onPreviewTrack={setPreviewVideo}
                         />
                       </motion.div>
                     ))}
@@ -1334,6 +1337,76 @@ export default function App() {
                 <div className="flex gap-3 justify-end">
                   <button onClick={() => setDeletePlaylistId(null)} className="px-5 py-2 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-[#27272a] transition-all cursor-pointer">Cancel</button>
                   <button onClick={executeDeletePlaylist} className="px-5 py-2 rounded-xl text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 cursor-pointer">Delete</button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {previewVideo && (
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              transition={{ duration: 0.25 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-3xl md:backdrop-blur-[40px]"
+            >
+              <div 
+                className="absolute inset-0 cursor-pointer" 
+                onClick={() => setPreviewVideo(null)} 
+              />
+              <motion.div 
+                initial={{ scale: 0.88, y: 40, opacity: 0 }} 
+                animate={{ scale: 1, y: 0, opacity: 1 }} 
+                exit={{ scale: 0.88, y: 40, opacity: 0 }} 
+                transition={{ type: "spring", damping: 30, stiffness: 350 }}
+                className="w-full max-w-3xl bg-[#0e0e11]/80 border border-zinc-800/80 backdrop-blur-2xl rounded-[28px] overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.7)] relative z-10 p-5 md:p-6"
+              >
+                {/* Modal Header */}
+                <div className="flex items-center justify-between gap-4 mb-4">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-[#1DB954] bg-[#1DB954]/10 border border-[#1DB954]/20 px-2.5 py-0.5 rounded-full select-none">
+                      Dynamic Match Playback Preview
+                    </span>
+                    <h3 className="text-base md:text-lg font-bold text-white truncate mt-2" title={previewVideo.videoTitle}>
+                      {previewVideo.videoTitle || "Matched Content"}
+                    </h3>
+                  </div>
+                  <button 
+                    onClick={() => setPreviewVideo(null)}
+                    className="p-2 cursor-pointer rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-all duration-200 active:scale-90"
+                    title="Close preview"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Aspect-Ratio video iframe wrapper conforming to top UX */}
+                <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black border border-zinc-800/85 shadow-2xl">
+                  <iframe 
+                    src={`https://www.youtube.com/embed/${previewVideo.videoId}?autoplay=1`} 
+                    title={previewVideo.videoTitle || "YouTube Video"}
+                    className="absolute inset-0 w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                    allowFullScreen
+                  />
+                </div>
+
+                {/* Info and helper details */}
+                <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-500 font-medium">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>Target Spotify:</span>
+                    <span className="text-zinc-300 font-semibold">{previewVideo.title}</span>
+                    <span className="text-zinc-600">by</span>
+                    <span className="text-zinc-300 font-semibold">{previewVideo.artist}</span>
+                  </div>
+                  <a 
+                    href={previewVideo.videoUrl} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="flex-shrink-0 text-[#1DB954] hover:underline flex items-center gap-1.5 font-bold transition-all"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Watch on YouTube
+                  </a>
                 </div>
               </motion.div>
             </motion.div>

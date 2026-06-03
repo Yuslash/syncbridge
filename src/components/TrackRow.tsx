@@ -8,11 +8,12 @@ import {
   ExternalLink, 
   CheckCircle2, 
   AlertCircle, 
-  RefreshCw,
-  Loader2,
-  Trash2,
-  Play,
-  Sparkles
+  RefreshCw, 
+  Loader2, 
+  Trash2, 
+  Play, 
+  Sparkles,
+  Pencil
 } from "lucide-react";
 
 export function extractYouTubeId(url: string): string | null {
@@ -33,9 +34,10 @@ interface TrackRowProps {
   onUpdateTrack: (trackId: string, updates: Partial<MatchedTrack>) => void;
   onSearchAgain: (trackId: string) => Promise<void>;
   isSearchingRow: boolean;
+  onPreviewTrack?: (track: MatchedTrack) => void;
 }
 
-export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchingRow }: TrackRowProps) {
+export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchingRow, onPreviewTrack }: TrackRowProps) {
   const [manualInput, setManualInput] = useState("");
   const [manualError, setManualError] = useState("");
   const [localSearchQuery, setLocalSearchQuery] = useState(`${track.artist} ${track.title}`);
@@ -44,6 +46,11 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [fetchError, setFetchError] = useState("");
+
+  // States for editing/changing existing link directly
+  const [isEditingUrl, setIsEditingUrl] = useState(false);
+  const [editInput, setEditInput] = useState("");
+  const [editError, setEditError] = useState("");
 
   const handleLoadSuggestions = async () => {
     setIsLoadingSuggestions(true);
@@ -91,6 +98,31 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
     setManualInput("");
   };
 
+  const handleSaveEditUrl = () => {
+    setEditError("");
+    const parsedId = extractYouTubeId(editInput);
+    if (!parsedId) {
+      setEditError("Could not extract a valid 11-Digit YouTube Video ID or URL.");
+      return;
+    }
+
+    onUpdateTrack(track.id, {
+      videoId: parsedId,
+      videoTitle: `User Manual Video (${parsedId})`,
+      videoUrl: `https://www.youtube.com/watch?v=${parsedId}`,
+      thumbnailUrl: `https://img.youtube.com/vi/${parsedId}/mqdefault.jpg`,
+      isManual: true,
+      status: "manual"
+    });
+    setIsEditingUrl(false);
+  };
+
+  const startEditingUrl = () => {
+    setEditInput(track.videoUrl || track.videoId || "");
+    setEditError("");
+    setIsEditingUrl(true);
+  };
+
   const handleClearLink = () => {
     onUpdateTrack(track.id, {
       videoId: null,
@@ -102,6 +134,7 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
     });
     setManualInput("");
     setManualError("");
+    setIsEditingUrl(false);
   };
 
   const formatDuration = (ms?: number) => {
@@ -217,7 +250,11 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
           <div className="flex items-center justify-between gap-3 bg-[#18181b] p-2 rounded-xl border border-[#27272a] shadow-inner">
             <div className="flex items-center gap-3 min-w-0">
               {/* YouTube Video Mini Thumbnail */}
-              <div className="w-14 h-9 rounded bg-black overflow-hidden flex-shrink-0 border border-[#27272a] flex items-center justify-center relative group/vid">
+              <button 
+                onClick={() => onPreviewTrack && onPreviewTrack(track)}
+                className="w-14 h-9 rounded bg-black overflow-hidden flex-shrink-0 border border-[#27272a] flex items-center justify-center relative group/vid cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-emerald-500/35"
+                title="Click to preview video"
+              >
                 {track.thumbnailUrl ? (
                   <img 
                     src={track.thumbnailUrl} 
@@ -227,15 +264,11 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
                 ) : (
                   <Youtube className="w-4 h-4 text-red-500" />
                 )}
-                <a 
-                  href={track.videoUrl!} 
-                  target="_blank" 
-                  rel="noreferrer" 
-                  className="absolute inset-0 bg-black/40 opacity-0 group-hover/vid:opacity-100 flex items-center justify-center transition-all"
-                >
-                  <Play className="w-3 h-3 text-white fill-white" />
-                </a>
-              </div>
+                {/* Visual hovering play overlay indicator for premium feel */}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/vid:opacity-100 flex items-center justify-center transition-all">
+                  <Play className="w-3.5 h-3.5 text-white fill-white hover:scale-110 transition-transform" />
+                </div>
+              </button>
 
               {/* YouTube Video Details */}
               <div className="min-w-0 flex-1 overflow-hidden">
@@ -261,6 +294,37 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
 
             {/* Actions for matched video */}
             <div className="flex items-center gap-1">
+              {/* Sparkles / Suggestions list toggle button */}
+              <button 
+                onClick={handleLoadSuggestions}
+                disabled={isLoadingSuggestions}
+                className={`p-1.5 transition-colors rounded cursor-pointer ${
+                  showSuggestions && !isLoadingSuggestions
+                    ? "text-[#1DB954] bg-[#27272a]/80" 
+                    : "text-[#71717a] hover:text-[#1DB954] hover:bg-[#27272a]"
+                }`}
+                title="View Match Suggestions (Best 5)"
+              >
+                {isLoadingSuggestions ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#1DB954]" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5" />
+                )}
+              </button>
+
+              {/* Pencil / Direct URL Change button */}
+              <button 
+                onClick={startEditingUrl}
+                className={`p-1.5 transition-colors rounded cursor-pointer ${
+                  isEditingUrl 
+                    ? "text-[#1DB954] bg-[#27272a]/80" 
+                    : "text-[#71717a] hover:text-[#1DB954] hover:bg-[#27272a]"
+                }`}
+                title="Change YouTube Link / URL"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+
               {/* Re-search query selector if they want to try another term */}
               <button 
                 onClick={() => setIsExpandingSearch(!isExpandingSearch)}
@@ -280,7 +344,7 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
               <button 
                 onClick={handleClearLink}
                 className="p-1.5 text-[#71717a] hover:text-red-500 transition-colors rounded hover:bg-[#27272a]"
-                title="Remove match"
+                title="Disconnect Match"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -335,6 +399,41 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
           </div>
         )}
 
+        {/* DIRECT EDIT URL INLINE OPTION */}
+        {isEditingUrl && (
+          <div className="mt-2 bg-[#0c0c0e] p-2.5 rounded-xl border border-emerald-500/15 text-xs flex flex-col gap-2 transition-all">
+            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">Change Match Video Link / ID:</span>
+            <div className="flex gap-2">
+              <input 
+                type="text"
+                value={editInput}
+                onChange={(e) => setEditInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSaveEditUrl()}
+                placeholder="Paste YouTube URL or Video ID..."
+                className="flex-grow bg-[#141416] border border-[#27272a] rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                autoFocus
+              />
+              <button 
+                onClick={handleSaveEditUrl}
+                className="bg-[#1DB954] hover:bg-emerald-500 text-black font-extrabold px-3 py-1 rounded-lg text-xs transition-colors cursor-pointer active:scale-95 flex-shrink-0"
+              >
+                Save
+              </button>
+              <button 
+                onClick={() => setIsEditingUrl(false)}
+                className="bg-[#27272a] hover:bg-[#3f3f46] text-white font-semibold px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+            {editError && (
+              <p className="text-[10px] text-red-400 font-medium px-1">
+                ⚠️ {editError}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* EXPANSIVE MANUAL TWEAK SEARCH OPTION */}
         {isExpandingSearch && (
           <div className="mt-2 bg-[#09090b] p-2 rounded-lg border border-[#27272a] text-xs flex flex-col gap-2">
@@ -383,7 +482,7 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
       </div>
 
       {/* Suggestions Drawer spanning full width */}
-      {!hasYouTubeMatch && showSuggestions && (
+      {showSuggestions && (
         <div className="col-span-1 md:col-span-12 mt-3 bg-[#0a0a0c] border border-emerald-500/15 rounded-xl p-4 transition-all">
           <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#18181b]">
             <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
@@ -413,17 +512,31 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
                   className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 rounded-lg bg-[#141416]/50 border border-[#27272a] hover:border-[#1DB954]/20 hover:bg-[#181820] transition-all group/sug"
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="w-16 h-10 bg-black rounded overflow-hidden flex-shrink-0 relative border border-[#27272a]">
+                    <button 
+                      onClick={() => {
+                        const previewObj: MatchedTrack = {
+                          id: track.id,
+                          title: track.title,
+                          artist: track.artist,
+                          album: track.album || "",
+                          durationMs: track.durationMs,
+                          artworkUrl: track.artworkUrl,
+                          status: "matched",
+                          videoId: sug.videoId,
+                          videoTitle: sug.title,
+                          videoUrl: sug.videoUrl,
+                          thumbnailUrl: sug.thumbnailUrl
+                        };
+                        if (onPreviewTrack) onPreviewTrack(previewObj);
+                      }}
+                      className="w-16 h-10 bg-black rounded overflow-hidden flex-shrink-0 relative border border-[#27272a] cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-500/35 text-left"
+                      title="Click to preview video"
+                    >
                       <img src={sug.thumbnailUrl} alt={sug.title} className="w-full h-full object-cover" />
-                      <a 
-                        href={sug.videoUrl} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        className="absolute inset-0 bg-black/40 opacity-0 group-hover/sug:opacity-100 flex items-center justify-center transition-opacity"
-                      >
-                        <Play className="w-3 h-3 text-white fill-white hover:scale-110 transition-transform" />
-                      </a>
-                    </div>
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/sug:opacity-100 flex items-center justify-center transition-opacity">
+                        <Play className="w-3.5 h-3.5 text-white fill-white hover:scale-110 transition-transform" />
+                      </div>
+                    </button>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 min-w-0">
                         <p className="text-xs font-semibold text-[#fafafa] truncate group-hover/sug:text-[#1DB954] transition-colors" title={sug.title}>

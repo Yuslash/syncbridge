@@ -56,7 +56,7 @@ function isTrackObject(obj: any): boolean {
   if (!obj || typeof obj !== 'object') return false;
   const name = obj.name || obj.title;
   if (typeof name !== 'string' || !name.trim()) return false;
-  return !!(obj.artists || obj.artist || obj.artistsNames);
+  return !!(obj.artists || obj.artist || obj.artistsNames || obj.albumOfTrack || obj.album);
 }
 
 /**
@@ -78,16 +78,38 @@ function parseTrack(t: any) {
     else if (typeof t.artist === 'object' && t.artist !== null) artist = t.artist.name || t.artist.title || "Unknown Artist";
   } else if (Array.isArray(t.artistsNames)) {
     artist = t.artistsNames.filter(Boolean).join(", ");
+  } else if (t.profile && typeof t.profile === 'object') {
+    artist = t.profile.name || "Unknown Artist";
   }
 
   const album = (t.album && typeof t.album === 'object') ? (t.album.name || "") : (t.albumName || "");
   
   let artworkUrl = "";
-  if (t.album && Array.isArray(t.album.images) && t.album.images.length > 0) {
+  // 1. Check album.images (Traditional Spotify web API structure)
+  if (t.album && typeof t.album === 'object' && Array.isArray(t.album.images) && t.album.images.length > 0) {
     artworkUrl = t.album.images[0].url || "";
-  } else if (Array.isArray(t.images) && t.images.length > 0) {
+  } 
+  // 2. Check albumOfTrack.coverArt.sources (Modern Spotify Embed graph hydration)
+  else if (t.albumOfTrack && typeof t.albumOfTrack === 'object') {
+    const coverArt = t.albumOfTrack.coverArt;
+    if (coverArt && Array.isArray(coverArt.sources) && coverArt.sources.length > 0) {
+      artworkUrl = coverArt.sources[0].url || "";
+    }
+  } 
+  // 3. Check direct images array
+  else if (Array.isArray(t.images) && t.images.length > 0) {
     artworkUrl = t.images[0].url || "";
-  } else if (typeof t.artworkUrl === 'string') {
+  } 
+  // 4. Check nested cover/sources objects
+  else if (t.cover && typeof t.cover === 'object') {
+    if (Array.isArray(t.cover.images) && t.cover.images.length > 0) {
+      artworkUrl = t.cover.images[0].url || "";
+    } else if (Array.isArray(t.cover.sources) && t.cover.sources.length > 0) {
+      artworkUrl = t.cover.sources[0].url || "";
+    }
+  }
+  // 5. Fallback string properties
+  else if (typeof t.artworkUrl === 'string') {
     artworkUrl = t.artworkUrl;
   } else if (typeof t.coverUrl === 'string') {
     artworkUrl = t.coverUrl;
@@ -133,50 +155,34 @@ function findPlaylistMeta(obj: any): { playlistName?: string; playlistDescriptio
 }
 
 /**
- * Recursively extracts track objects from any container inside parsed scripts.
+ * Recursively scans any object hierarchy to find valid track list candidate arrays.
  */
-function extractTracksFromObject(obj: any, results: any[] = []): void {
-  if (!obj || typeof obj !== 'object') return;
+function findTracksRecursive(val: any, foundLists: any[][]): void {
+  if (!val || typeof val !== 'object') return;
 
-  // Primary Spotify JSON structure
-  if (obj.tracks && typeof obj.tracks === 'object') {
-    const items = obj.tracks.items;
-    if (Array.isArray(items)) {
-      for (const item of items) {
-        const t = item.track || item;
-        if (isTrackObject(t)) {
-          results.push(parseTrack(t));
-        }
-      }
-      if (results.length > 0) return;
-    }
-  }
-
-  // Backup array listing
-  if (Array.isArray(obj.items)) {
-    for (const item of obj.items) {
-      const t = item.track || item;
-      if (isTrackObject(t)) {
-        results.push(parseTrack(t));
+  if (Array.isArray(val)) {
+    const candidateTracks: any[] = [];
+    for (const el of val) {
+      if (!el || typeof el !== 'object') continue;
+      const potentialTrack = el.track || el.item?.track || el;
+      if (isTrackObject(potentialTrack)) {
+        candidateTracks.push(parseTrack(potentialTrack));
       }
     }
-    if (results.length > 0) return;
-  }
-
-  // General array of tracks directly
-  if (Array.isArray(obj.tracks)) {
-    for (const t of obj.tracks) {
-      if (isTrackObject(t)) {
-        results.push(parseTrack(t));
-      }
+    if (candidateTracks.length > 0) {
+      foundLists.push(candidateTracks);
     }
-    if (results.length > 0) return;
+    
+    // Continue scanning nested array members
+    for (const el of val) {
+      findTracksRecursive(el, foundLists);
+    }
+    return;
   }
 
-  for (const key of Object.keys(obj)) {
-    if (typeof obj[key] === 'object' && obj[key] !== null && key !== "parent") {
-      extractTracksFromObject(obj[key], results);
-      if (results.length > 0) return;
+  for (const key of Object.keys(val)) {
+    if (key !== 'parent' && typeof val[key] === 'object' && val[key] !== null) {
+      findTracksRecursive(val[key], foundLists);
     }
   }
 }
@@ -191,10 +197,18 @@ function tryRegexAndJsonParse(html: string): { playlistName: string; playlistDes
     
     let bestTracks: any[] = [];
     let bestMeta: { playlistName?: string; playlistDescription?: string } | null = null;
+    let highestScore = -1;
 
     while ((match = scriptRegex.exec(html)) !== null) {
-      const content = match[1].trim();
+      let content = match[1].trim();
       if (!content) continue;
+
+      // Handle raw percent-encoded text states if embedded in specific data container attributes
+      if (content.includes("%7B") && content.includes("%22")) {
+        try {
+          content = decodeURIComponent(content);
+        } catch (_) {}
+      }
 
       const firstCurly = content.indexOf("{");
       const lastCurly = content.lastIndexOf("}");
@@ -204,20 +218,23 @@ function tryRegexAndJsonParse(html: string): { playlistName: string; playlistDes
           const parsed = JSON.parse(jsonStr);
           
           const currentMeta = findPlaylistMeta(parsed);
-          if (currentMeta && currentMeta.playlistName) {
-            bestMeta = currentMeta;
-          }
           
-          const tracksContainer: any[] = [];
-          extractTracksFromObject(parsed, tracksContainer);
-          if (tracksContainer.length > 0) {
-            bestTracks = tracksContainer;
-            if (bestMeta && bestMeta.playlistName) {
-              return {
-                playlistName: bestMeta.playlistName,
-                playlistDescription: bestMeta.playlistDescription || "",
-                tracks: bestTracks
-              };
+          const foundTrackLists: any[][] = [];
+          findTracksRecursive(parsed, foundTrackLists);
+          
+          for (const list of foundTrackLists) {
+            if (list.length === 0) continue;
+            
+            const artworkCount = list.filter(t => !!t.artworkUrl).length;
+            // Weigh track count and non-empty artwork density to fetch rich outcomes
+            const score = list.length * 10 + artworkCount * 100;
+            
+            if (score > highestScore) {
+              highestScore = score;
+              bestTracks = list;
+              if (currentMeta && currentMeta.playlistName) {
+                bestMeta = currentMeta;
+              }
             }
           }
         } catch (e) {
