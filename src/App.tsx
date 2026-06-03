@@ -83,6 +83,13 @@ export default function App() {
   // Loaded state
   const [playlistMeta, setPlaylistMeta] = useState<{name: string, description: string} | null>(null);
   const [tracks, setTracks] = useState<MatchedTrack[]>([]);
+  const trackIdToIndexMap = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    for (let i = 0; i < tracks.length; i++) {
+      map[tracks[i].id] = i;
+    }
+    return map;
+  }, [tracks]);
   const [searchIndicesInProgress, setSearchIndicesInProgress] = useState<Record<string, boolean>>({});
 
   // Active playlist ID
@@ -1181,7 +1188,10 @@ export default function App() {
                 </div>
 
                 {/* THE MAIN TRACKS TABLE LISTING */}
-                <div className="divide-y divide-[#18181b] max-h-[500px] overflow-y-auto scrollbar">
+                <div 
+                  className="divide-y divide-[#18181b] max-h-[500px] overflow-y-auto custom-scrollbar scroll-smooth [overscroll-behavior:contain]"
+                  style={{ transform: "translate3d(0, 0, 0)", WebkitOverflowScrolling: "touch" }}
+                >
                   <AnimatePresence initial={false}>
                     {filteredTracks.map((track, idx) => (
                       <motion.div 
@@ -1189,11 +1199,13 @@ export default function App() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.15 }}
+                        style={{ contentVisibility: "auto", containIntrinsicSize: "auto 80px" } as React.CSSProperties}
+                        className="will-change-[transform,opacity]"
                       >
                         <TrackRow 
                           track={track}
-                          index={tracks.findIndex(t => t.id === track.id)}
+                          index={trackIdToIndexMap[track.id] ?? idx}
                           onUpdateTrack={handleUpdateTrack}
                           onSearchAgain={triggerSearchForTrack}
                           isSearchingRow={!!searchIndicesInProgress[track.id]}
