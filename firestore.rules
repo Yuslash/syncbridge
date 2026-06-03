@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Playlists synced to individual user Google Auth accounts
+    match /playlists/{playlistId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() 
+                    && isValidId(playlistId) 
+                    && isEmailVerified()
+                    && isValidPlaylist(incoming()) 
+                    && incoming().id == playlistId
+                    && incoming().userId == request.auth.uid;
+                    
+      allow update: if isSignedIn() 
+                    && isValidId(playlistId)
+                    && isEmailVerified()
+                    && isValidPlaylist(incoming())
+                    && incoming().userId == request.auth.uid
+                    && resource.data.userId == request.auth.uid
+                    && incoming().userId == resource.data.userId
+                    && (
+                      incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'spotifyUrl', 'tracks', 'updatedAt'])
+                    );
+                    
+      allow delete: if isSignedIn() 
+                    && isValidId(playlistId)
+                    && resource.data.userId == request.auth.uid;
+    }
+
+    // Hardened Global Access Control Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidPlaylist(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 200
+        && data.description is string && data.description.size() <= 2000
+        && data.spotifyUrl is string && data.spotifyUrl.size() <= 500
+        && data.userId is string && data.userId.size() <= 128
+        && data.tracks is list && data.tracks.size() <= 1000
+        && (data.tracks.size() == 0 || data.tracks[0] is map);
+    }
+  }
+}

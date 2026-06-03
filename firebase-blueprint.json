@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "playlist": {
+      "title": "Playlist",
+      "description": "A fully converted or created Spotify-to-YouTube playlist ready for user consumption or queue export.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The unique playlist ID, matching the Spotify code or a uniquely generated uuid."
+        },
+        "name": {
+          "type": "string",
+          "description": "The Title of the playlist."
+        },
+        "description": {
+          "type": "string",
+          "description": "The custom description of the playlist."
+        },
+        "spotifyUrl": {
+          "type": "string",
+          "description": "The source Spotify playlist link."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The owner's Firebase authorization uid, used to scope access."
+        },
+        "tracks": {
+          "type": "array",
+          "description": "The array of fully matched tracks with video metadata."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO timestamp indicating when this playlist structure was last serialized or edited."
+        }
+      },
+      "required": ["id", "name", "userId", "tracks"]
+    }
+  },
+  "firestore": {
+    "/playlists/{playlistId}": {
+      "schema": "playlist",
+      "description": "Collection of playlists synced to users' accounts."
+    }
+  }
+}

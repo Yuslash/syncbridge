@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import { YouTube } from "youtube-sr";
 
 dotenv.config();
 
@@ -189,147 +190,12 @@ function cleanQueryTerm(artist: string, title: string): { cleanArtist: string; c
 }
 
 /**
- * YouTubeVideoCandidate interface representation.
- */
-interface YouTubeVideoCandidate {
-  videoId: string;
-  title: string;
-  artistName: string;
-  duration: string;
-  thumbnailUrl: string;
-  videoUrl: string;
-  isShort: boolean;
-}
-
-/**
- * Extracts and cleans video candidates from raw YouTube HTML search results using a fast chunking splitter.
- * Detects whether a candidate is a YouTube Short or a teaser (< 75 seconds).
- */
-function parseVideosFromHtml(html: string): YouTubeVideoCandidate[] {
-  const candidates: YouTubeVideoCandidate[] = [];
-  const chunks = html.split('"videoRenderer":{');
-
-  for (let i = 1; i < chunks.length; i++) {
-    const chunk = chunks[i];
-
-    // Extract video ID
-    const videoIdMatch = chunk.match(/"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"/);
-    if (!videoIdMatch) continue;
-    const videoId = videoIdMatch[1];
-
-    if (["youtube_logo", "svg_graphics", "pixel_spacer"].includes(videoId)) continue;
-
-    // Extract Title cleanly
-    let title = "";
-    const titleMatch = chunk.match(/"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"([^"]+)"/);
-    if (titleMatch) {
-      title = titleMatch[1];
-    } else {
-      const labelMatch = chunk.match(/"accessibilityData"\s*:\s*\{\s*"label"\s*:\s*"([^"]+)"/);
-      if (labelMatch) {
-        title = labelMatch[1];
-      } else {
-        const simpleTitleMatch = chunk.match(/"title"\s*:\s*\{\s*"simpleText"\s*:\s*"([^"]+)"/);
-        title = simpleTitleMatch ? simpleTitleMatch[1] : `YouTube Video (${videoId})`;
-      }
-    }
-
-    // Decode unicode escaping & backslash escapes
-    title = title
-      .replace(/\\"/g, '"')
-      .replace(/\\u0026/g, '&')
-      .replace(/\\u0027/g, "'")
-      .replace(/\\/g, '')
-      .trim();
-
-    // Extract Channel Name / Artist
-    let artistName = "YouTube Channel";
-    const channelMatch = chunk.match(/"ownerText"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"([^"]+)"/);
-    if (channelMatch) {
-      artistName = channelMatch[1];
-    } else {
-      const bylineMatch = chunk.match(/"shortBylineText"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"([^"]+)"/);
-      if (bylineMatch) {
-        artistName = bylineMatch[1];
-      }
-    }
-
-    artistName = artistName
-      .replace(/\\"/g, '"')
-      .replace(/\\u0026/g, '&')
-      .replace(/\\u0027/g, "'")
-      .replace(/\\/g, '')
-      .trim();
-
-    // Extract Length / Duration
-    let duration = "";
-    const durationMatch = chunk.match(/"lengthText"\s*:\s*\{\s*"accessibility"\s*:\s*\{[^}]+\},\s*"simpleText"\s*:\s*"([^"]+)"/);
-    if (durationMatch) {
-      duration = durationMatch[1];
-    } else {
-      const simpleLenMatch = chunk.match(/"lengthText"\s*:\s*\{\s*"simpleText"\s*:\s*"([^"]+)"/);
-      if (simpleLenMatch) {
-        duration = simpleLenMatch[1];
-      }
-    }
-
-    // Determine if candidate is a short, a teaser, or a clip
-    let isShortMatch = false;
-    const titleLower = title.toLowerCase();
-    
-    // Explicit keywords
-    if (
-      titleLower.includes("#shorts") || 
-      titleLower.includes("shorts") || 
-      titleLower.includes("tik tok") || 
-      titleLower.includes("tiktok") || 
-      titleLower.includes("reel") ||
-      titleLower.includes("status video")
-    ) {
-      isShortMatch = true;
-    }
-
-    // Short duration check (less than 1 minute 15 seconds is very likely a Short or clip, not a full song)
-    if (duration) {
-      const parts = duration.split(":");
-      if (parts.length === 2) {
-        const minutes = parseInt(parts[0], 10);
-        const seconds = parseInt(parts[1], 10);
-        if (!isNaN(minutes)) {
-          const totalSeconds = minutes * 60 + (isNaN(seconds) ? 0 : seconds);
-          if (totalSeconds < 75) {
-            isShortMatch = true;
-          }
-        }
-      } else if (parts.length === 1) {
-        const seconds = parseInt(parts[0], 10);
-        if (!isNaN(seconds) && seconds < 75) {
-          isShortMatch = true;
-        }
-      }
-    }
-
-    candidates.push({
-      videoId,
-      title,
-      artistName,
-      duration,
-      thumbnailUrl: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-      videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
-      isShort: isShortMatch
-    });
-  }
-
-  return candidates;
-}
-
-/**
- * Searches YouTube recursively for songs and returns top results using public YouTube scraping.
+ * Searches YouTube recursively for songs and returns top results using youtube-sr.
  * Automatically filters out YouTube Shorts and short clip durations.
  */
 app.post("/api/search-youtube", async (req, res): Promise<any> => {
   try {
-    const { title, artist } = req.body;
+    const { title, artist, mode = "fast" } = req.body;
     if (!title || !artist) {
       return res.status(400).json({ error: "Track title and artist are required" });
     }
@@ -344,50 +210,131 @@ app.post("/api/search-youtube", async (req, res): Promise<any> => {
       `${cleanTitle}`                                             // 4: Last-ditch title alone
     ];
 
+    if (mode === "research") {
+      console.log(`[YouTube Search] Research mode activated for: "${artist} - ${title}"`);
+      // Gather top candidates from the first two queries
+      let allCandidates: any[] = [];
+      for (const searchQuery of possibleQueries.slice(0, 2)) {
+        try {
+          const results = await YouTube.search(searchQuery, { 
+            limit: 5,
+            requestOptions: {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Cookie": "SOCS=CAEQAw; CONSENT=YES+cb",
+                "Accept-Language": "en-US,en;q=0.9"
+              }
+            } 
+          });
+          allCandidates = [...allCandidates, ...results];
+        } catch (err) {
+          console.warn(`[YouTube Search] Retry for query failed in research mode`, err);
+        }
+      }
+      
+      // Deduplicate
+      const uniqueCandidatesMap = new Map();
+      allCandidates.forEach(c => {
+        if (!uniqueCandidatesMap.has(c.id)) {
+          uniqueCandidatesMap.set(c.id, c);
+        }
+      });
+      const uniqueCandidates = Array.from(uniqueCandidatesMap.values());
+      const nonShorts = uniqueCandidates.filter(c => c.duration > 75000);
+      
+      if (nonShorts.length > 0) {
+        // Use Gemini to analyze and pick the best one
+        const prompt = `You are evaluating YouTube search results to find the PERFECT full-length official song match.
+Target Song: "${title}" by Artist: "${artist}"
+
+Candidates (JSON):
+${JSON.stringify(nonShorts.map(c => ({ id: c.id, title: c.title, channel: c.channel?.name, duration: c.durationFormatted })), null, 2)}
+
+Rules:
+1. Prefer official audio, music videos, or lyric videos from the artist's official channel/VEVO over covers, live performances, or heavily remixed versions (unless a remix was explicitly requested).
+2. The duration should be typical for a song (2-6 minutes generally).
+3. Return ONLY the JSON containing {"bestVideoId": "videoId_here"}. If there's no suitable match, return null for bestVideoId.
+
+Return your response strictly as JSON conforming to:
+{"bestVideoId": "<string or null>"}`;
+        try {
+          const geminiResponse = await ai.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: prompt,
+            config: {
+               responseMimeType: "application/json",
+               responseSchema: {
+                  type: Type.OBJECT,
+                  properties: {
+                     bestVideoId: { type: Type.STRING, description: "The ID of the best video match, or null" }
+                  }
+               }
+            }
+          });
+          const parsedGemini = JSON.parse(geminiResponse.text!.trim());
+          if (parsedGemini.bestVideoId) {
+            const bestChoice = nonShorts.find(c => c.id === parsedGemini.bestVideoId) || nonShorts[0];
+            return res.json({
+              videoId: bestChoice.id,
+              videoTitle: bestChoice.title,
+              videoUrl: `https://www.youtube.com/watch?v=${bestChoice.id}`,
+              thumbnailUrl: bestChoice.thumbnail?.url || `https://img.youtube.com/vi/${bestChoice.id}/mqdefault.jpg`
+            });
+          }
+        } catch (err) {
+            console.error("[YouTube Search Gemini Error] Falling back to standard pick", err);
+        }
+        
+        // Fallback if Gemini fails or returns null
+        const primeVideo = nonShorts[0];
+        return res.json({
+          videoId: primeVideo.id,
+          videoTitle: primeVideo.title,
+          videoUrl: `https://www.youtube.com/watch?v=${primeVideo.id}`,
+          thumbnailUrl: primeVideo.thumbnail?.url || `https://img.youtube.com/vi/${primeVideo.id}/mqdefault.jpg`
+        });
+      }
+    }
+
+    const activeQueries = mode === "fast" ? possibleQueries.slice(0, 1) : possibleQueries;
+
     let primeVideoId: string | null = null;
     let videoTitle: string = `${artist} - ${title}`;
-    let backupVideo: YouTubeVideoCandidate | null = null;
+    let primeThumbnailUrl: string | null = null;
 
     // Iterate through waterfall search queries until a non-short videoId is located
-    for (const searchQuery of possibleQueries) {
+    for (const searchQuery of activeQueries) {
       console.log(`[YouTube Search] Querying: "${searchQuery}" (Original: "${artist} - ${title}")`);
-      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
 
       try {
-        const response = await fetch(searchUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
-            "Accept-Language": "en-US,en;q=0.9"
+        const candidates = await YouTube.search(searchQuery, { 
+          limit: 5,
+          requestOptions: {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Cookie": "SOCS=CAEQAw; CONSENT=YES+cb",
+              "Accept-Language": "en-US,en;q=0.9"
+            }
           }
         });
 
-        if (!response.ok) continue;
-
-        const htmlContent = await response.text();
-        const candidates = parseVideosFromHtml(htmlContent);
-
         // Prioritize non-shorts first helper
-        const nonShorts = candidates.filter(c => !c.isShort);
+        const nonShorts = candidates.filter(c => c.duration > 75000);
 
         if (nonShorts.length > 0) {
-          primeVideoId = nonShorts[0].videoId;
-          videoTitle = nonShorts[0].title;
+          primeVideoId = nonShorts[0].id!;
+          videoTitle = nonShorts[0].title!;
+          primeThumbnailUrl = nonShorts[0].thumbnail?.url || `https://img.youtube.com/vi/${primeVideoId}/mqdefault.jpg`;
           break; // Located a satisfactory FULL-LENGTH video match! Exit loop.
-        } else if (candidates.length > 0 && !backupVideo) {
+        } else if (candidates.length > 0 && !primeVideoId) {
           // Keep a backup video (which might be a short or clip) just in case no query returns a full video song
-          backupVideo = candidates[0];
+          primeVideoId = candidates[0].id!;
+          videoTitle = candidates[0].title!;
+          primeThumbnailUrl = candidates[0].thumbnail?.url || `https://img.youtube.com/vi/${primeVideoId}/mqdefault.jpg`;
         }
       } catch (err) {
         console.warn(`[YouTube Search Retry Warning] Call to "${searchQuery}" failed. Retrying next tier.`, err);
       }
-    }
-
-    // Fall back to backup matcher if no full song was matched across all progressive tiers
-    if (!primeVideoId && backupVideo) {
-      primeVideoId = backupVideo.videoId;
-      videoTitle = backupVideo.title;
-      console.log(`[YouTube Search] Falling back to backup matched short/clip ID: ${primeVideoId}`);
     }
 
     if (!primeVideoId) {
@@ -401,7 +348,7 @@ app.post("/api/search-youtube", async (req, res): Promise<any> => {
       videoId: primeVideoId,
       videoTitle: videoTitle,
       videoUrl: `https://www.youtube.com/watch?v=${primeVideoId}`,
-      thumbnailUrl: `https://img.youtube.com/vi/${primeVideoId}/mqdefault.jpg`
+      thumbnailUrl: primeThumbnailUrl
     });
 
   } catch (error: any) {
@@ -425,25 +372,30 @@ app.post("/api/youtube-suggestions", async (req, res): Promise<any> => {
     const searchQuery = `${cleanArtist} ${cleanTitle}`;
     console.log(`[YouTube Suggestions] Fetching candidates for: "${searchQuery}"`);
 
-    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
-    const response = await fetch(searchUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
-        "Accept-Language": "en-US,en;q=0.9"
-      }
+    const candidates = await YouTube.search(searchQuery, { 
+      limit: 10,
+      requestOptions: {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Cookie": "SOCS=CAEQAw; CONSENT=YES+cb",
+          "Accept-Language": "en-US,en;q=0.9"
+        }
+      }  
     });
 
-    if (!response.ok) {
-      throw new Error("Failed to scan YouTube results.");
-    }
-
-    const html = await response.text();
-    const candidates = parseVideosFromHtml(html);
+    const formattedCandidates = candidates.map(c => ({
+      videoId: c.id,
+      title: c.title,
+      artistName: c.channel?.name || "Unknown Channel",
+      duration: c.durationFormatted,
+      thumbnailUrl: c.thumbnail?.url || `https://img.youtube.com/vi/${c.id}/mqdefault.jpg`,
+      videoUrl: `https://www.youtube.com/watch?v=${c.id}`,
+      isShort: c.duration < 75000
+    }));
 
     // Prioritize non-shorts to top positions, but keep shorts at bottom of list if not enough results
-    const nonShorts = candidates.filter(c => !c.isShort);
-    const shorts = candidates.filter(c => c.isShort);
+    const nonShorts = formattedCandidates.filter(c => !c.isShort);
+    const shorts = formattedCandidates.filter(c => c.isShort);
 
     let finalSuggestions = nonShorts.slice(0, 5);
     if (finalSuggestions.length < 5) {
@@ -478,9 +430,15 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server starting on http://localhost:${PORT}`);
-  });
+  // Only bind to a local port if NOT running in Vercel (Vercel manages instances automatically)
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server starting on http://localhost:${PORT}`);
+    });
+  }
 }
 
 startServer();
+
+// Vercel Serverless Function export
+export default app;
