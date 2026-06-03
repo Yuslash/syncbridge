@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { YouTube } from "youtube-sr";
@@ -110,7 +109,7 @@ app.post("/api/parse-spotify", async (req, res): Promise<any> => {
 
     // Use Gemini Structured JSON response to extract details
     const geminiResponse = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: `Extract the tracklist details in exact track order from this Spotify Playlist embed snippet.
 Keep the original sequence. Find the track name, artist/producer, album Name, duration, and artwork image URL if available.
 
@@ -218,6 +217,7 @@ app.post("/api/search-youtube", async (req, res): Promise<any> => {
         try {
           const results = await YouTube.search(searchQuery, { 
             limit: 5,
+            type: "video",
             requestOptions: {
               headers: {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -259,7 +259,7 @@ Return your response strictly as JSON conforming to:
 {"bestVideoId": "<string or null>"}`;
         try {
           const geminiResponse = await ai.models.generateContent({
-            model: "gemini-3.5-flash",
+            model: "gemini-2.5-flash",
             contents: prompt,
             config: {
                responseMimeType: "application/json",
@@ -309,6 +309,7 @@ Return your response strictly as JSON conforming to:
       try {
         const candidates = await YouTube.search(searchQuery, { 
           limit: 5,
+          type: "video",
           requestOptions: {
             headers: {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -374,6 +375,7 @@ app.post("/api/youtube-suggestions", async (req, res): Promise<any> => {
 
     const candidates = await YouTube.search(searchQuery, { 
       limit: 10,
+      type: "video",
       requestOptions: {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -415,7 +417,9 @@ app.post("/api/youtube-suggestions", async (req, res): Promise<any> => {
 
 async function startServer() {
   // Vite dev mode integration
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    const viteModule = "vite";
+    const { createServer: createViteServer } = await import(viteModule);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
