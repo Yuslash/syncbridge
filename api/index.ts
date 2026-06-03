@@ -31,7 +31,8 @@ async function callOpenRouter(prompt: string, expectJson: boolean = true): Promi
     body: JSON.stringify({
       model: "google/gemini-2.5-flash",
       messages: [{ role: "user", content: prompt }],
-      response_format: expectJson ? { type: "json_object" } : undefined
+      response_format: expectJson ? { type: "json_object" } : undefined,
+      max_tokens: 3000
     })
   });
 
