@@ -516,6 +516,18 @@ export default function App() {
     setShowResetConfirm(false);
   };
 
+  const handleGoHome = () => {
+    setPlaylistMeta(null);
+    setTracks([]);
+    setSpotifyUrl("");
+    setErrorMsg("");
+    setCurrentPlaylistId(null);
+    localStorage.removeItem("syncify_playlist_meta");
+    localStorage.removeItem("syncify_tracks");
+    localStorage.removeItem("syncify_spotify_url");
+    localStorage.removeItem("syncify_playlist_id");
+  };
+
   const handleLoadSavedPlaylist = (savedPl: LocalPlaylist) => {
     setPlaylistMeta({
       name: savedPl.name,
@@ -631,6 +643,7 @@ export default function App() {
         onLogin={handleLogin}
         onLogout={handleLogout}
         isCloudActive={isFirebaseConfigured && !!auth}
+        onGoHome={handleGoHome}
       />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 md:px-6 pt-8">
@@ -971,13 +984,23 @@ export default function App() {
               className="flex flex-col gap-6 py-2"
             >
               {/* Back to Input Header Controls & Reset */}
-              <div className="flex items-center justify-between gap-4">
-                <button 
-                  onClick={handleClearAllConfirm}
-                  className="px-4 py-2 text-sm text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#18181b] rounded-xl border border-[#27272a] transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  <ListRestart className="w-4 h-4" /> Reset / Import New
-                </button>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#111113]/30 p-3 rounded-2xl border border-[#27272a]/40 sm:p-0 sm:bg-transparent sm:border-0">
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={handleGoHome}
+                    className="flex-1 sm:flex-none px-4 py-2.5 text-xs font-semibold text-[#fafafa] bg-[#121214] hover:bg-[#18181b] border border-[#27272a] rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                    title="Safely return back to the main search and import view"
+                  >
+                    <Layers3 className="w-3.5 h-3.5 text-[#1DB954]" /> Go Home
+                  </button>
+                  <button 
+                    onClick={handleClearAllConfirm}
+                    className="flex-1 sm:flex-none px-4 py-2.5 text-xs text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#18181b] rounded-xl border border-[#27272a] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="Hard reset of your workspace to import something completely new"
+                  >
+                    <ListRestart className="w-3.5 h-3.5" /> Reset Workspace
+                  </button>
+                </div>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2 text-xs text-[#52525b] font-mono whitespace-nowrap hidden sm:flex">
                     <span>State Autosaved</span>

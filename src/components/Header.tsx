@@ -1,5 +1,5 @@
 import React from "react";
-import { Music, Youtube, LogIn, LogOut, ShieldAlert, CheckCircle2 } from "lucide-react";
+import { Music, Youtube, LogIn, LogOut, ShieldAlert, CheckCircle2, Layers3 } from "lucide-react";
 import { User } from "firebase/auth";
 
 interface HeaderProps {
@@ -7,15 +7,20 @@ interface HeaderProps {
   onLogin: () => void;
   onLogout: () => void;
   isCloudActive: boolean;
+  onGoHome: () => void;
 }
 
-export function Header({ user, onLogin, onLogout, isCloudActive }: HeaderProps) {
+export function Header({ user, onLogin, onLogout, isCloudActive, onGoHome }: HeaderProps) {
   return (
-    <header className="border-b border-[#27272a] bg-[#09090b] py-4 px-6 sticky top-0 z-50 shadow-md">
+    <header className="border-b border-[#27272a] bg-[#09090b] py-4 px-3 md:px-6 sticky top-0 z-50 shadow-md">
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
         {/* Brand Logo Layout */}
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-to-tr from-[#1DB954] to-red-600 rounded-xl shadow-lg border border-white/10 flex items-center justify-center">
+        <div 
+          onClick={onGoHome}
+          className="flex items-center gap-3 cursor-pointer select-none hover:opacity-90 active:scale-[0.98] transition-all group"
+          title="Return to Home Dashboard"
+        >
+          <div className="p-2.5 bg-gradient-to-tr from-[#1DB954] to-red-600 rounded-xl shadow-lg border border-white/10 flex items-center justify-center group-hover:scale-105 transition-transform">
             <Music className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -35,7 +40,17 @@ export function Header({ user, onLogin, onLogout, isCloudActive }: HeaderProps) 
         </div>
 
         {/* Dynamic Actions & Account Session Grid */}
-        <div className="flex flex-wrap items-center justify-center md:justify-end gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap items-center justify-center md:justify-end gap-2.5 w-full md:w-auto">
+          {/* Go Home Navigation Option */}
+          <button
+            onClick={onGoHome}
+            className="h-10 px-3.5 bg-[#111113] hover:bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] font-semibold text-xs rounded-xl border border-[#27272a] hover:border-[#3e3e42] transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+            title="Go to Home Importer Screen"
+          >
+            <Layers3 className="w-4 h-4 text-[#1DB954]" />
+            <span>Home</span>
+          </button>
+
           {/* Cloud Presence status indicator */}
           <div className="flex items-center gap-2 text-xs bg-[#121214] border border-[#27272a] rounded-xl px-3.5 py-2.5">
             {isCloudActive ? (

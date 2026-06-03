@@ -113,44 +113,77 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
       }`}
     >
       {/* Index and Spotify Info */}
-      <div className="md:col-span-5 flex items-center gap-4">
-        {/* Track Number */}
-        <span className="font-mono text-sm text-[#52525b] w-6 text-right">
-          {String(index + 1).padStart(2, '0')}
-        </span>
+      <div className="md:col-span-5 flex items-center justify-between md:justify-start gap-4">
+        <div className="flex items-center gap-4 min-w-0">
+          {/* Track Number */}
+          <span className="font-mono text-sm text-[#52525b] w-6 text-right flex-shrink-0">
+            {String(index + 1).padStart(2, '0')}
+          </span>
 
-        {/* Artwork */}
-        <div className="w-11 h-11 rounded overflow-hidden bg-[#27272a] flex items-center justify-center flex-shrink-0 border border-[#3f3f46]/35 shadow-md">
-          {track.artworkUrl ? (
-            <img 
-              src={track.artworkUrl} 
-              alt={track.title} 
-              className="w-full h-full object-cover" 
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <Music className="w-4 h-4 text-[#1DB954]" />
-          )}
+          {/* Artwork */}
+          <div className="w-11 h-11 rounded overflow-hidden bg-[#27272a] flex items-center justify-center flex-shrink-0 border border-[#3f3f46]/35 shadow-md">
+            {track.artworkUrl ? (
+              <img 
+                src={track.artworkUrl} 
+                alt={track.title} 
+                className="w-full h-full object-cover" 
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <Music className="w-4 h-4 text-[#1DB954]" />
+            )}
+          </div>
+
+          {/* Title and Artist */}
+          <div className="min-w-0 pr-2 overflow-hidden max-w-[130px] sm:max-w-none">
+            <h4 
+              className={`text-sm font-medium text-[#fafafa] hover:text-[#1DB954] transition-colors ${
+                track.title.length > 15 ? "mobile-marquee-title" : "truncate w-full"
+              }`} 
+              title={track.title}
+            >
+              {track.title}
+            </h4>
+            <p 
+              className={`text-xs text-[#71717a] mt-0.5 ${
+                track.artist.length > 18 ? "mobile-marquee-artist" : "truncate w-full"
+              }`} 
+              title={track.artist}
+            >
+              {track.artist}
+            </p>
+            {track.album && (
+              <p className="text-[10px] text-[#52525b] truncate mt-0.5">
+                Ref: {track.album}
+              </p>
+            )}
+          </div>
         </div>
 
-        {/* Title and Artist */}
-        <div className="min-w-0 pr-2">
-          <h4 className="text-sm font-medium text-[#fafafa] truncate hover:text-[#1DB954] transition-colors" title={track.title}>
-            {track.title}
-          </h4>
-          <p className="text-xs text-[#71717a] truncate mt-0.5" title={track.artist}>
-            {track.artist}
-          </p>
-          {track.album && (
-            <p className="text-[10px] text-[#52525b] truncate mt-0.5">
-              💿 {track.album}
-            </p>
+        {/* Mobile-only compact status badge inline with the title block */}
+        <div className="md:hidden flex-shrink-0">
+          {track.status === "searching" || isSearchingRow ? (
+            <span className="flex items-center gap-1 text-[9px] font-bold bg-[#fafafa]/5 text-[#a1a1aa] px-2 py-0.5 rounded border border-[#27272a] animate-pulse">
+              <Loader2 className="w-2.5 h-2.5 animate-spin text-[#1DB954]" /> Search
+            </span>
+          ) : track.status === "matched" ? (
+            <span className="flex items-center gap-1 text-[9px] font-bold bg-[#1DB954]/10 text-[#1DB954] px-2 py-0.5 rounded border border-[#1DB954]/20">
+              <CheckCircle2 className="w-3 h-3" /> Matched
+            </span>
+          ) : track.status === "manual" ? (
+            <span className="flex items-center gap-1 text-[9px] font-bold bg-[#1DB954]/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">
+              <Link2 className="w-3 h-3" /> Linked
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[9px] font-bold bg-red-500/10 text-red-500 px-2 py-0.5 rounded border border-red-500/20">
+              <AlertCircle className="w-3 h-3" /> Missing
+            </span>
           )}
         </div>
       </div>
 
-      {/* Match Status / Indicator Column */}
-      <div className="md:col-span-2 flex items-center gap-2">
+      {/* Desktop Match Status / Indicator Column */}
+      <div className="hidden md:flex md:col-span-2 items-center gap-2">
         {track.status === "searching" || isSearchingRow ? (
           <span className="flex items-center gap-1.5 text-[10px] font-bold bg-[#fafafa]/5 text-[#a1a1aa] px-2.5 py-1 rounded uppercase tracking-tighter border border-[#27272a] animate-pulse">
             <Loader2 className="w-3 h-3 animate-spin text-[#1DB954]" /> Searching
@@ -198,17 +231,22 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
               </div>
 
               {/* YouTube Video Details */}
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <a 
                   href={track.videoUrl!} 
                   target="_blank" 
                   rel="noreferrer"
-                  className="text-xs font-medium text-[#fafafa] hover:text-[#1DB954] hover:underline line-clamp-1 flex items-center gap-1 transition-colors"
+                  className="text-xs font-medium text-[#1DB954] hover:underline flex items-center gap-1 transition-colors w-full overflow-hidden"
+                  title={track.videoTitle}
                 >
-                  {track.videoTitle || "YouTube Video"}
-                  <ExternalLink className="w-3 h-3 inline flex-shrink-0 text-[#71717a]" />
+                  <span className={`block truncate min-w-0 flex-1 ${
+                    track.videoTitle && track.videoTitle.length > 20 ? "mobile-marquee-yt" : ""
+                  }`}>
+                    {track.videoTitle || "YouTube Video"}
+                  </span>
+                  <ExternalLink className="w-3 h-3 flex-shrink-0 text-[#71717a]" />
                 </a>
-                <span className="text-[10px] font-mono text-[#52525b]">
+                <span className="text-[10px] font-mono text-[#52525b] block truncate mt-0.5">
                   ID: {track.videoId} {track.durationMs ? `• ${formatDuration(track.durationMs)}` : ''}
                 </span>
               </div>
@@ -365,7 +403,7 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
               {suggestions.map((sug) => (
                 <div 
                   key={sug.videoId}
-                  className="flex items-center justify-between gap-4 p-2 rounded-lg bg-[#141416]/50 border border-[#27272a] hover:border-[#1DB954]/20 hover:bg-[#181820] transition-all group/sug"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 rounded-lg bg-[#141416]/50 border border-[#27272a] hover:border-[#1DB954]/20 hover:bg-[#181820] transition-all group/sug"
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="w-16 h-10 bg-black rounded overflow-hidden flex-shrink-0 relative border border-[#27272a]">
@@ -407,7 +445,7 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
                       });
                       setShowSuggestions(false);
                     }}
-                    className="h-8 px-3 text-[11px] font-bold rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/20 hover:border-emerald-500 transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                    className="w-full sm:w-auto h-8 px-3 text-[11px] font-bold rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/20 hover:border-emerald-500 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95"
                   >
                     Connect Track
                   </button>

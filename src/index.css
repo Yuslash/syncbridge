@@ -30,3 +30,55 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
 }
+
+/* Premium song name marquee scroll for mobile screens */
+@keyframes marquee-scroll-title {
+  0%, 15% {
+    transform: translateX(0);
+  }
+  85%, 100% {
+    transform: translateX(-40%);
+  }
+}
+
+@keyframes marquee-scroll-artist {
+  0%, 20% {
+    transform: translateX(0);
+  }
+  80%, 100% {
+    transform: translateX(-30%);
+  }
+}
+
+@keyframes marquee-scroll-yt {
+  0%, 15% {
+    transform: translateX(0);
+  }
+  85%, 100% {
+    transform: translateX(-45%);
+  }
+}
+
+@media (max-width: 767px) {
+  .mobile-marquee-title {
+    display: inline-block;
+    white-space: nowrap;
+    animation: marquee-scroll-title 9s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+    padding-right: 2rem;
+  }
+
+  .mobile-marquee-artist {
+    display: inline-block;
+    white-space: nowrap;
+    animation: marquee-scroll-artist 9s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+    padding-right: 1.5rem;
+  }
+
+  .mobile-marquee-yt {
+    display: inline-block;
+    white-space: nowrap;
+    animation: marquee-scroll-yt 10s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+    padding-right: 2.5rem;
+  }
+}
+
