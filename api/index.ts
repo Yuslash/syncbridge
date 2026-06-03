@@ -50,6 +50,196 @@ async function callOpenRouter(prompt: string, expectJson: boolean = true): Promi
 }
 
 /**
+ * Robustly checks if an object qualifies as a Spotify track structure.
+ */
+function isTrackObject(obj: any): boolean {
+  if (!obj || typeof obj !== 'object') return false;
+  const name = obj.name || obj.title;
+  if (typeof name !== 'string' || !name.trim()) return false;
+  return !!(obj.artists || obj.artist || obj.artistsNames);
+}
+
+/**
+ * Standardizes a track object parsed from raw scripts into our standard schema.
+ */
+function parseTrack(t: any) {
+  const title = t.name || t.title || "Unknown Title";
+  
+  let artist = "Unknown Artist";
+  if (Array.isArray(t.artists)) {
+    artist = t.artists
+      .map((a: any) => (typeof a === 'object' && a !== null ? (a.name || a.title || "") : String(a)))
+      .filter(Boolean)
+      .join(", ");
+  } else if (typeof t.artists === 'string') {
+    artist = t.artists;
+  } else if (t.artist) {
+    if (typeof t.artist === 'string') artist = t.artist;
+    else if (typeof t.artist === 'object' && t.artist !== null) artist = t.artist.name || t.artist.title || "Unknown Artist";
+  } else if (Array.isArray(t.artistsNames)) {
+    artist = t.artistsNames.filter(Boolean).join(", ");
+  }
+
+  const album = (t.album && typeof t.album === 'object') ? (t.album.name || "") : (t.albumName || "");
+  
+  let artworkUrl = "";
+  if (t.album && Array.isArray(t.album.images) && t.album.images.length > 0) {
+    artworkUrl = t.album.images[0].url || "";
+  } else if (Array.isArray(t.images) && t.images.length > 0) {
+    artworkUrl = t.images[0].url || "";
+  } else if (typeof t.artworkUrl === 'string') {
+    artworkUrl = t.artworkUrl;
+  } else if (typeof t.coverUrl === 'string') {
+    artworkUrl = t.coverUrl;
+  }
+
+  const durationMs = t.duration_ms || t.durationMs || 0;
+
+  return { title, artist, album, durationMs, artworkUrl };
+}
+
+/**
+ * Recursively locates playlist metadata inside parsed Javascript/JSON scripts.
+ */
+function findPlaylistMeta(obj: any): { playlistName?: string; playlistDescription?: string } | null {
+  if (!obj || typeof obj !== 'object') return null;
+
+  if (obj.type === "playlist" || obj.type === "album") {
+    if (typeof obj.name === 'string') {
+      return {
+        playlistName: obj.name,
+        playlistDescription: obj.description || ""
+      };
+    }
+  }
+
+  if (typeof obj.playlistName === 'string' || typeof obj.name === 'string') {
+    if (obj.tracks && (Array.isArray(obj.tracks) || Array.isArray(obj.tracks.items))) {
+      return {
+        playlistName: obj.name || obj.playlistName,
+        playlistDescription: obj.description || ""
+      };
+    }
+  }
+
+  for (const key of Object.keys(obj)) {
+    if (typeof obj[key] === 'object' && obj[key] !== null) {
+      const meta = findPlaylistMeta(obj[key]);
+      if (meta && meta.playlistName) return meta;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Recursively extracts track objects from any container inside parsed scripts.
+ */
+function extractTracksFromObject(obj: any, results: any[] = []): void {
+  if (!obj || typeof obj !== 'object') return;
+
+  // Primary Spotify JSON structure
+  if (obj.tracks && typeof obj.tracks === 'object') {
+    const items = obj.tracks.items;
+    if (Array.isArray(items)) {
+      for (const item of items) {
+        const t = item.track || item;
+        if (isTrackObject(t)) {
+          results.push(parseTrack(t));
+        }
+      }
+      if (results.length > 0) return;
+    }
+  }
+
+  // Backup array listing
+  if (Array.isArray(obj.items)) {
+    for (const item of obj.items) {
+      const t = item.track || item;
+      if (isTrackObject(t)) {
+        results.push(parseTrack(t));
+      }
+    }
+    if (results.length > 0) return;
+  }
+
+  // General array of tracks directly
+  if (Array.isArray(obj.tracks)) {
+    for (const t of obj.tracks) {
+      if (isTrackObject(t)) {
+        results.push(parseTrack(t));
+      }
+    }
+    if (results.length > 0) return;
+  }
+
+  for (const key of Object.keys(obj)) {
+    if (typeof obj[key] === 'object' && obj[key] !== null && key !== "parent") {
+      extractTracksFromObject(obj[key], results);
+      if (results.length > 0) return;
+    }
+  }
+}
+
+/**
+ * Attempts to extract tracks and metadata programmatically using regex and JSON loading.
+ */
+function tryRegexAndJsonParse(html: string): { playlistName: string; playlistDescription: string; tracks: any[] } | null {
+  try {
+    const scriptRegex = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+    let match;
+    
+    let bestTracks: any[] = [];
+    let bestMeta: { playlistName?: string; playlistDescription?: string } | null = null;
+
+    while ((match = scriptRegex.exec(html)) !== null) {
+      const content = match[1].trim();
+      if (!content) continue;
+
+      const firstCurly = content.indexOf("{");
+      const lastCurly = content.lastIndexOf("}");
+      if (firstCurly !== -1 && lastCurly !== -1 && lastCurly > firstCurly) {
+        const jsonStr = content.substring(firstCurly, lastCurly + 1);
+        try {
+          const parsed = JSON.parse(jsonStr);
+          
+          const currentMeta = findPlaylistMeta(parsed);
+          if (currentMeta && currentMeta.playlistName) {
+            bestMeta = currentMeta;
+          }
+          
+          const tracksContainer: any[] = [];
+          extractTracksFromObject(parsed, tracksContainer);
+          if (tracksContainer.length > 0) {
+            bestTracks = tracksContainer;
+            if (bestMeta && bestMeta.playlistName) {
+              return {
+                playlistName: bestMeta.playlistName,
+                playlistDescription: bestMeta.playlistDescription || "",
+                tracks: bestTracks
+              };
+            }
+          }
+        } catch (e) {
+          // Ignore parse errors within script chunks
+        }
+      }
+    }
+
+    if (bestTracks.length > 0) {
+      return {
+        playlistName: bestMeta?.playlistName || "Imported Spotify Playlist",
+        playlistDescription: bestMeta?.playlistDescription || "",
+        tracks: bestTracks
+      };
+    }
+  } catch (err) {
+    console.error("[Spotify Local Parser Error]", err);
+  }
+  return null;
+}
+
+/**
  * Trims down the HTML content to keep it lightweight for Gemini API extraction.
  * Removes heavy style/svg elements, keeping meta tags and scripts that contain track data.
  */
@@ -77,15 +267,15 @@ function cleanSpotifyHtml(html: string): string {
     }
   }
 
-  // If we found script content, use that (it usually has the clean complete JSON)
+  // If we found script content, use that. Keep it very compact for API calls to prevent 402 issues.
   if (scriptContent) {
-    return scriptContent.substring(0, 35000);
+    return scriptContent.substring(0, 10000);
   }
 
   // Fallback: strip tags and keep text
   let fallbackText = clean.replace(/<[^>]+>/g, ' ');
   fallbackText = fallbackText.replace(/\s+/g, ' ');
-  return fallbackText.substring(0, 25000);
+  return fallbackText.substring(0, 8000);
 }
 
 // REST Endpoints
@@ -105,7 +295,6 @@ app.post("/api/parse-spotify", async (req, res): Promise<any> => {
     }
 
     // Extract Playlist ID from typical Spotify links
-    // Handles: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGsy3985?si=... or open.spotify.com/playlist/37i9... or spotify/playlist/...
     const playlistIdMatch = url.match(/playlist\/([a-zA-Z0-9]{22})/);
     if (!playlistIdMatch) {
       return res.status(400).json({ error: "Invalid Spotify playlist link. Could not find a 22-character playlist ID." });
@@ -130,10 +319,17 @@ app.post("/api/parse-spotify", async (req, res): Promise<any> => {
 
     const html = await fetchResponse.text();
 
-    // Clean html content to keep it concise for processing
-    const cleanContent = cleanSpotifyHtml(html);
+    // 1st Priority: Blazing fast offline programmatic script parsing
+    console.log(`[Spotify Engine] Attempting programmatic JSON extraction from script hydrations...`);
+    const programResult = tryRegexAndJsonParse(html);
+    if (programResult && programResult.tracks.length > 0) {
+      console.log(`[Spotify Engine] Success! Programmatically extracted ${programResult.tracks.length} tracks.`);
+      return res.json(programResult);
+    }
 
-    console.log(`[Spotify Engine] Calling OpenRouter to parse track list cleanly...`);
+    // 2nd Priority Fallback: Low-token OpenRouter LLM Call
+    console.log(`[Spotify Engine] Local parser returned 0 tracks. Falling back to OpenRouter matching...`);
+    const cleanContent = cleanSpotifyHtml(html);
 
     const prompt = `Extract the tracklist details in exact track order from this Spotify Playlist embed snippet.
 Keep the original sequence. Find the track name, artist/producer, album Name, duration, and artwork image URL if available.
