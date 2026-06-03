@@ -1,0 +1,6 @@
+{
+  "name": "Spotify to YouTube Playlist Converter",
+  "description": "Quickly convert any public Spotify playlist to a YouTube playlist with a single click. Keep songs in their original order, search with auto-matching, and manually add missing song links.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
