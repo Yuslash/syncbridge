@@ -419,19 +419,20 @@ function cleanQueryTerm(artist: string, title: string): { cleanArtist: string; c
 app.post("/api/search-youtube", async (req, res): Promise<any> => {
   try {
     const { title, artist, mode = "fast" } = req.body;
-    if (!title || !artist) {
-      return res.status(400).json({ error: "Track title and artist are required" });
+    if (!title) {
+      return res.status(400).json({ error: "Track title is required" });
     }
 
-    const { cleanArtist, cleanTitle } = cleanQueryTerm(artist, title);
+    const artistName = artist || "";
+    const { cleanArtist, cleanTitle } = cleanQueryTerm(artistName, title);
 
     // Progressive query waterfall to optimize success rate without hit limits
     const possibleQueries = [
-      `${cleanArtist} ${cleanTitle}`,                             // 1: Primary artist & title
-      `${cleanArtist} - ${cleanTitle} official audio`,            // 2: Clean audio focus
-      `${artist} ${title}`,                                       // 3: Exact raw Spotify metadata
-      `${cleanTitle}`                                             // 4: Last-ditch title alone
-    ];
+      cleanArtist ? `${cleanArtist} ${cleanTitle}` : `${cleanTitle}`, // 1: Primary artist & title if artist is present
+      cleanArtist ? `${cleanArtist} - ${cleanTitle} official audio` : `${cleanTitle} official audio`, // 2: Clean audio focus
+      artistName ? `${artistName} ${title}` : `${title}`, // 3: Exact raw Spotify metadata
+      `${cleanTitle}` // 4: Last-ditch title alone
+    ].filter(Boolean);
 
     if (mode === "research") {
       console.log(`[YouTube Search] Research mode activated for: "${artist} - ${title}"`);
@@ -577,12 +578,13 @@ Return your response strictly as JSON conforming to:
 app.post("/api/youtube-suggestions", async (req, res): Promise<any> => {
   try {
     const { title, artist } = req.body;
-    if (!title || !artist) {
-      return res.status(400).json({ error: "Track title and artist are required" });
+    if (!title) {
+      return res.status(400).json({ error: "Track title is required" });
     }
 
-    const { cleanArtist, cleanTitle } = cleanQueryTerm(artist, title);
-    const searchQuery = `${cleanArtist} ${cleanTitle}`;
+    const artistName = artist || "";
+    const { cleanArtist, cleanTitle } = cleanQueryTerm(artistName, title);
+    const searchQuery = cleanArtist ? `${cleanArtist} ${cleanTitle}` : cleanTitle;
     console.log(`[YouTube Suggestions] Fetching candidates for: "${searchQuery}"`);
 
     const candidates = await YouTube.search(searchQuery, { 

@@ -55,11 +55,18 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: track.title, artist: track.artist })
       });
-      if (!response.ok) throw new Error("Could not load suggestions.");
+      if (!response.ok) {
+        let errorMsg = "Could not load suggestions.";
+        try {
+          const body = await response.json();
+          if (body && body.error) errorMsg = body.error;
+        } catch (e) {}
+        throw new Error(errorMsg);
+      }
       const data = await response.json();
       setSuggestions(data.suggestions || []);
-    } catch (err) {
-      setFetchError("Failed to fetch suggestions.");
+    } catch (err: any) {
+      setFetchError(err?.message || "Failed to fetch suggestions.");
     } finally {
       setIsLoadingSuggestions(false);
     }
