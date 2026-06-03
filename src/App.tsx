@@ -77,6 +77,7 @@ export default function App() {
   const [loadingStep, setLoadingStep] = useState<"none" | "fetching" | "extracting" | "searching">("none");
   const [loadingMessage, setLoadingMessage] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [apiKeyErrorDetails, setApiKeyErrorDetails] = useState<{ error: string, suggestedFix: string } | null>(null);
   
   // Loaded state
   const [playlistMeta, setPlaylistMeta] = useState<{name: string, description: string} | null>(null);
@@ -382,6 +383,7 @@ export default function App() {
     setPlaylistMeta(null);
     setTracks([]);
     setErrorMsg("");
+    setApiKeyErrorDetails(null);
     
     try {
       // Step 1: Spotify Embed URL Fetch
@@ -396,6 +398,12 @@ export default function App() {
 
       if (!spotifyRes.ok) {
         const errJson = await spotifyRes.json();
+        if (errJson.isApiKeyError) {
+          setApiKeyErrorDetails({
+            error: errJson.error,
+            suggestedFix: errJson.suggestedFix
+          });
+        }
         throw new Error(errJson.error || "Failed to process Spotify link. Verify it is public.");
       }
 
@@ -511,6 +519,7 @@ export default function App() {
     setTracks([]);
     setSpotifyUrl("");
     setErrorMsg("");
+    setApiKeyErrorDetails(null);
     setCurrentPlaylistId(null);
     saveCurrentState(null, [], "");
     setShowResetConfirm(false);
@@ -521,6 +530,7 @@ export default function App() {
     setTracks([]);
     setSpotifyUrl("");
     setErrorMsg("");
+    setApiKeyErrorDetails(null);
     setCurrentPlaylistId(null);
     localStorage.removeItem("syncify_playlist_meta");
     localStorage.removeItem("syncify_tracks");
@@ -734,17 +744,53 @@ export default function App() {
                           <h4 className={`text-sm font-bold ${conversionMode === "research" ? "text-white" : "text-gray-300"}`}>Deep Research API</h4>
                           {conversionMode === "research" && <CheckCircle2 className="w-4 h-4 text-indigo-400" />}
                         </div>
-                        <p className="text-[11px] text-gray-500 font-medium">Uses Gemini AI to intelligently analyze candidate videos for the official best match.</p>
+                        <p className="text-[11px] text-gray-500 font-medium">Uses AI via OpenRouter to intelligently analyze candidate videos for the official best match.</p>
                       </div>
                     </button>
                   </div>
                 </div>
 
-                {errorMsg && (
+                {apiKeyErrorDetails ? (
                   <motion.div 
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mt-4 p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 flex items-start gap-2"
+                    className="mt-4 p-5 bg-[#1c0f13] border border-red-900/40 rounded-2xl text-xs text-red-300 flex flex-col gap-3.5 relative overflow-hidden shadow-2xl"
+                  >
+                    {/* Visual warning background glow */}
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 blur-3xl rounded-full" />
+                    
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center justify-center text-red-500 flex-shrink-0">
+                        <AlertCircle className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-bold text-red-200 tracking-tight text-left">OpenRouter API Key Resolution Needed</p>
+                        <p className="mt-1 text-gray-400 leading-relaxed text-left">{apiKeyErrorDetails.error}</p>
+                      </div>
+                    </div>
+
+                    <div className="h-[1px] bg-red-950/40 w-full" />
+
+                    <div className="flex flex-col gap-2.5 text-left">
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#1DB954]">Recommended Actions:</span>
+                      <ol className="list-decimal pl-4 space-y-2 text-gray-400 leading-relaxed font-medium">
+                        <li>
+                          Open the Google AI Studio <span className="text-white font-semibold">Settings &gt; Secrets</span> panel (located in your main workspace sidebar/context).
+                        </li>
+                        <li>
+                          Inject your valid OpenRouter API Key into the <strong className="text-white font-mono bg-zinc-900 px-1 py-0.5 rounded border border-zinc-800">OPENROUTER_API_KEY</strong> environment secret.
+                        </li>
+                        <li>
+                          Refresh this page/dev-server to seamlessly retry your conversion!
+                        </li>
+                      </ol>
+                    </div>
+                  </motion.div>
+                ) : errorMsg ? (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4 p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 flex items-start gap-2 text-left animate-pulse"
                   >
                     <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500 mt-0.5" />
                     <div>
@@ -752,7 +798,7 @@ export default function App() {
                       <p className="mt-0.5">{errorMsg}</p>
                     </div>
                   </motion.div>
-                )}
+                ) : null}
               </div>
 
               {/* Sample playlists */}

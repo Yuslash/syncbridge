@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { YouTube } from "youtube-sr";
 
@@ -11,15 +10,43 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Initialize Gemini SDK with User-Agent telemetry
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
+/**
+ * Robust wrapper to query the OpenRouter API.
+ * Uses google/gemini-2.5-flash as default, providing fast, cheap, and accurate JSON structure extraction.
+ */
+async function callOpenRouter(prompt: string, expectJson: boolean = true): Promise<string> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    throw new Error("No OpenRouter API key found. Please define OPENROUTER_API_KEY.");
   }
-});
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://ais-pre-h3vdpdt2rwxb7wo3anwl22-647025301367.asia-east1.run.app",
+      "X-Title": "SyncBridge Pro"
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [{ role: "user", content: prompt }],
+      response_format: expectJson ? { type: "json_object" } : undefined
+    })
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`OpenRouter API returned error status ${response.status}: ${errorBody}`);
+  }
+
+  const data = await response.json();
+  if (!data?.choices?.[0]?.message?.content) {
+    throw new Error("Invalid response format received from OpenRouter API.");
+  }
+
+  return data.choices[0].message.content;
+}
 
 /**
  * Trims down the HTML content to keep it lightweight for Gemini API extraction.
@@ -105,44 +132,31 @@ app.post("/api/parse-spotify", async (req, res): Promise<any> => {
     // Clean html content to keep it concise for processing
     const cleanContent = cleanSpotifyHtml(html);
 
-    console.log(`[Spotify Engine] Calling Gemini to parse track list cleanly...`);
+    console.log(`[Spotify Engine] Calling OpenRouter to parse track list cleanly...`);
 
-    // Use Gemini Structured JSON response to extract details
-    const geminiResponse = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `Extract the tracklist details in exact track order from this Spotify Playlist embed snippet.
+    const prompt = `Extract the tracklist details in exact track order from this Spotify Playlist embed snippet.
 Keep the original sequence. Find the track name, artist/producer, album Name, duration, and artwork image URL if available.
 
 Source snippet:
-${cleanContent}`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            playlistName: { type: Type.STRING, description: "Name of the playlist" },
-            playlistDescription: { type: Type.STRING, description: "Description or tags of the playlist" },
-            tracks: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING, description: "Title of the song" },
-                  artist: { type: Type.STRING, description: "Full artist name(s)" },
-                  album: { type: Type.STRING, description: "Album name (optional)" },
-                  durationMs: { type: Type.INTEGER, description: "Duration in milliseconds (optional)" },
-                  artworkUrl: { type: Type.STRING, description: "Smal lcover/album artwork URL if present" },
-                },
-                required: ["title", "artist"],
-              }
-            }
-          },
-          required: ["playlistName", "tracks"]
-        }
-      }
-    });
+${cleanContent}
 
-    const parsedJson = JSON.parse(geminiResponse.text!.trim());
+You MUST return your output STRICTLY as a JSON object of this structure:
+{
+  "playlistName": "Name or title of the playlist",
+  "playlistDescription": "Detailed overview or tags of the playlist",
+  "tracks": [
+    {
+      "title": "Title of the song",
+      "artist": "Full artist name(s)",
+      "album": "Album name (optional)",
+      "durationMs": 180000,
+      "artworkUrl": "image URL"
+    }
+  ]
+}`;
+
+    const openRouterText = await callOpenRouter(prompt, true);
+    const parsedJson = JSON.parse(openRouterText.trim());
     return res.json({
       playlistName: parsedJson.playlistName || "Imported Playlist",
       playlistDescription: parsedJson.playlistDescription || "",
@@ -151,7 +165,20 @@ ${cleanContent}`,
 
   } catch (error: any) {
     console.error("[Spotify Engine Error]", error);
-    return res.status(500).json({ error: error.message || "An error occurred while parsing the Spotify playlist." });
+    const errMsg = error.message || String(error);
+    const isLeaked = /leaked/i.test(errMsg);
+    const isPermissionDenied = /permission_denied|403|denied|unauthorized|invalid api key/i.test(errMsg);
+    const isKeyError = /api_key|api key/i.test(errMsg);
+
+    if (isLeaked || isPermissionDenied || isKeyError) {
+      return res.status(403).json({
+        error: "Your OpenRouter API key is invalid or failed authorization.",
+        isApiKeyError: true,
+        suggestedFix: "To fix this, please verify or update your OPENROUTER_API_KEY value inside Google AI Studio's 'Settings' > 'Secrets' panel, then try again!"
+      });
+    }
+
+    return res.status(500).json({ error: errMsg || "An error occurred while parsing the Spotify playlist." });
   }
 });
 
@@ -258,20 +285,8 @@ Rules:
 Return your response strictly as JSON conforming to:
 {"bestVideoId": "<string or null>"}`;
         try {
-          const geminiResponse = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-               responseMimeType: "application/json",
-               responseSchema: {
-                  type: Type.OBJECT,
-                  properties: {
-                     bestVideoId: { type: Type.STRING, description: "The ID of the best video match, or null" }
-                  }
-               }
-            }
-          });
-          const parsedGemini = JSON.parse(geminiResponse.text!.trim());
+          const openRouterText = await callOpenRouter(prompt, true);
+          const parsedGemini = JSON.parse(openRouterText.trim());
           if (parsedGemini.bestVideoId) {
             const bestChoice = nonShorts.find(c => c.id === parsedGemini.bestVideoId) || nonShorts[0];
             return res.json({
@@ -282,7 +297,7 @@ Return your response strictly as JSON conforming to:
             });
           }
         } catch (err) {
-            console.error("[YouTube Search Gemini Error] Falling back to standard pick", err);
+            console.error("[YouTube Search OpenRouter Error] Falling back to standard pick", err);
         }
         
         // Fallback if Gemini fails or returns null
