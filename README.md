@@ -90,5 +90,4 @@ Vercel completes the build pipeline, sets up routing rewrites via `vercel.json`,
 ## 📂 Configuration Mapping Files
 
 * **`vercel.json`**: Establishes API rewrite proxies, routing matches to `/api/(.*)` into `api/index.ts`, and redirects client browser routes to Vite's static index.
-* **`api/index.ts`**: The official Serverless entry point containing the Express app export format.
-* **`server.ts`**: Conditionally disables physical `app.listen()` port biddings if running in serverless environments (`process.env.VERCEL`), allowing Vercel functions to execute routes raw.
+* **`api/index.ts`**: The official Serverless entry point containing the full full-stack Express app inside a single, zero-dependency directory. Conditionally disables physical `app.listen()` port biddings if running in serverless environments (`process.env.VERCEL`), allowing Vercel functions to execute routes raw.
