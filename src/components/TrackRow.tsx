@@ -649,6 +649,7 @@ export function TrackRow({
                         videoTitle: sug.title,
                         videoUrl: sug.videoUrl,
                         thumbnailUrl: sug.thumbnailUrl,
+                        durationMs: sug.durationMs,
                         isManual: true,
                         status: "manual"
                       });

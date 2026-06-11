@@ -123,6 +123,7 @@ export default function App() {
   const [repeatMode, setRepeatMode] = useState<'none' | 'one' | 'all'>('all');
   const [isShuffled, setIsShuffled] = useState(false);
   const [showPlayerVideoPreview, setShowPlayerVideoPreview] = useState(false);
+  const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
   const [isInsideIframe, setIsInsideIframe] = useState(false);
   const playerIframeRef = React.useRef<HTMLIFrameElement | null>(null);
 
@@ -239,13 +240,52 @@ export default function App() {
     }
   };
 
+  // Listen for YouTube Embed player events to trigger authentic seamless track progression
+  useEffect(() => {
+    const handleYouTubeMessage = (event: MessageEvent) => {
+      try {
+        const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+        if (data && data.event === "onStateChange") {
+          const playerState = data.info;
+          // PlayerStates: -1 (unstarted), 0 (ended), 1 (playing), 2 (paused), 3 (buffering), 5 (video cued)
+          if (playerState === 0) {
+            console.log("[YouTube Embed Listener] Song ended naturally. Triggering next track.");
+            if (repeatMode === 'one') {
+              if (playerIframeRef.current) {
+                playerIframeRef.current.contentWindow?.postMessage(
+                  JSON.stringify({ event: "command", func: "seekTo", args: [0, true] }),
+                  "*"
+                );
+                playerIframeRef.current.contentWindow?.postMessage(
+                  JSON.stringify({ event: "command", func: "playVideo", args: [] }),
+                  "*"
+                );
+              }
+              setCurrentTimeSecs(0);
+            } else {
+              playbackProgressTimerNextTrigger();
+            }
+          }
+        }
+      } catch (e) {
+        // Suppress parsing errors for other non-YouTube messages safely
+      }
+    };
+
+    window.addEventListener("message", handleYouTubeMessage);
+    return () => {
+      window.removeEventListener("message", handleYouTubeMessage);
+    };
+  }, [repeatMode, activePlayingTrackId, playableTracks, trackDurationSecs]);
+
   // Local counting timer clock for 100% responsive timeline slider updates
   useEffect(() => {
     let timerId: any = null;
     if (isPlaying && activePlayingTrackId) {
       timerId = setInterval(() => {
         setCurrentTimeSecs(prev => {
-          if (prev >= trackDurationSecs) {
+          // Track plays for full YouTube duration. Grace buffer of 15s to guarantee no clipping!
+          if (prev >= trackDurationSecs + 15) {
             if (repeatMode === 'one') {
               if (playerIframeRef.current) {
                 playerIframeRef.current.contentWindow?.postMessage(
@@ -567,6 +607,7 @@ export default function App() {
           videoTitle: result.videoTitle,
           videoUrl: result.videoUrl,
           thumbnailUrl: result.thumbnailUrl,
+          durationMs: result.durationMs || targetTrack.durationMs,
           isManual: false,
           status: "matched"
         });
@@ -618,6 +659,7 @@ export default function App() {
                     videoTitle: result.videoTitle,
                     videoUrl: result.videoUrl,
                     thumbnailUrl: result.thumbnailUrl,
+                    durationMs: result.durationMs || t.durationMs,
                     isManual: false,
                     status: "matched" as const
                   };
@@ -742,6 +784,7 @@ export default function App() {
                   videoTitle: ytResult.videoTitle,
                   videoUrl: ytResult.videoUrl,
                   thumbnailUrl: ytResult.thumbnailUrl,
+                  durationMs: ytResult.durationMs || item.durationMs,
                   status: "matched"
                 };
               } else {
@@ -1714,18 +1757,38 @@ export default function App() {
       {currentPlayingTrack && (
         <div className={`fixed transition-all duration-300 ${
           showPlayerVideoPreview 
-            ? "bottom-24 right-4 w-60 h-36 border-2 border-[#1DB954] rounded-xl shadow-[0_0_20px_rgba(29,185,84,0.3)] overflow-hidden opacity-100 z-50 pointer-events-auto bg-black" 
-            : "w-60 h-36 opacity-0 pointer-events-none fixed bottom-24 right-4 translate-x-[9999px]"
+            ? isVideoFullscreen
+              ? "inset-0 w-screen h-screen bg-black border-0 rounded-none shadow-none z-50 pointer-events-auto"
+              : "bottom-24 right-4 w-60 h-36 border-2 border-[#1DB954] rounded-xl shadow-[0_0_20px_rgba(29,185,84,0.3)] overflow-hidden opacity-100 z-50 pointer-events-auto bg-black" 
+            : "w-60 h-36 opacity-0 pointer-events-none fixed bottom-24 right-4 translate-x-[9999px] z-50"
         }`}>
           {/* Visual indicator stamp overlay on video tray */}
           {showPlayerVideoPreview && (
             <div className="absolute top-1.5 left-1.5 bg-black/80 backdrop-blur text-[8px] uppercase tracking-widest text-[#1DB954] font-bold px-1.5 py-0.5 rounded border border-[#1DB954]/20 flex items-center gap-1 z-10 select-none">
-              <span className="w-1.5 h-1.5 bg-[#1DB954] rounded-full animate-pulse" /> Live Feed
+              <span className="w-1.5 h-1.5 bg-[#1DB954] rounded-full animate-pulse" /> Live Feed {isVideoFullscreen && "(Fullscreen Mode)"}
             </div>
           )}
+
+          {/* Fullscreen control overlay buttons */}
+          {showPlayerVideoPreview && (
+            <div className="absolute top-1.5 right-1.5 flex gap-1.5 z-10">
+              <button
+                onClick={() => setIsVideoFullscreen(!isVideoFullscreen)}
+                className="bg-black/80 hover:bg-black/95 text-white hover:text-[#1DB954] p-1.5 rounded-lg border border-[#1DB954]/20 hover:border-[#1DB954]/55 shadow-md flex items-center justify-center transition-all cursor-pointer active:scale-90"
+                title={isVideoFullscreen ? "Exit Fullscreen" : "Expand to Fullscreen Feed"}
+              >
+                {isVideoFullscreen ? (
+                  <Minimize2 className="w-3.5 h-3.5" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
+          )}
+
           <iframe
             ref={playerIframeRef}
-            src={`https://www.youtube.com/embed/${currentPlayingTrack.videoId}?enablejsapi=1&autoplay=1&controls=0&mute=${isMuted ? "1" : "0"}&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.origin)}`}
+            src={`https://www.youtube.com/embed/${currentPlayingTrack.videoId}?enablejsapi=1&autoplay=1&controls=${isVideoFullscreen ? "1" : "0"}&mute=${isMuted ? "1" : "0"}&cc_load_policy=0&iv_load_policy=3&hl=en&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.origin)}`}
             title="Syncify Premium Streaming Core"
             className="w-full h-full border-0 select-none"
             allow="autoplay; encrypted-media"
@@ -1890,28 +1953,35 @@ export default function App() {
 
               {/* Timeline and clock readings */}
               <div className="w-full flex items-center gap-3 max-w-lg">
-                {/* Clock elapsed progress text */}
-                <span className="text-[9px] font-mono text-zinc-500 w-8 text-right select-none">
-                  {Math.floor(currentTimeSecs / 60)}:
-                  {String(currentTimeSecs % 60).padStart(2, "0")}
-                </span>
+                {(() => {
+                  const displayTimeSecs = Math.min(currentTimeSecs, trackDurationSecs);
+                  return (
+                    <>
+                      {/* Clock elapsed progress text */}
+                      <span className="text-[9px] font-mono text-zinc-500 w-8 text-right select-none">
+                        {Math.floor(displayTimeSecs / 60)}:
+                        {String(displayTimeSecs % 60).padStart(2, "0")}
+                      </span>
 
-                {/* Timeline slider range */}
-                <div className="flex-1 relative group py-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max={trackDurationSecs}
-                    value={currentTimeSecs}
-                    onChange={(e) => handleTimelineChange(parseInt(e.target.value, 10))}
-                    className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#1DB954] outline-none group-hover:bg-zinc-700 transition-all"
-                    style={{
-                      background: `linear-gradient(to right, #1DB954 ${
-                        (currentTimeSecs / trackDurationSecs) * 100
-                      }%, #27272a ${(currentTimeSecs / trackDurationSecs) * 100}%)`,
-                    }}
-                  />
-                </div>
+                      {/* Timeline slider range */}
+                      <div className="flex-1 relative group py-2">
+                        <input
+                          type="range"
+                          min="0"
+                          max={trackDurationSecs}
+                          value={displayTimeSecs}
+                          onChange={(e) => handleTimelineChange(parseInt(e.target.value, 10))}
+                          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#1DB954] outline-none group-hover:bg-zinc-700 transition-all"
+                          style={{
+                            background: `linear-gradient(to right, #1DB954 ${
+                              (displayTimeSecs / trackDurationSecs) * 100
+                            }%, #27272a ${(displayTimeSecs / trackDurationSecs) * 100}%)`,
+                          }}
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {/* Clock total track duration text */}
                 <span className="text-[9px] font-mono text-zinc-500 w-8 select-none">

@@ -43,6 +43,22 @@ Sometimes, secondary remixes or live versions are preferred. Every track has sec
 
 ---
 
+## 🎵 Playback, Audio, & Auto-Play Features
+
+We have built dedicated features to guarantee smooth audio playback and full-queue streaming:
+
+### 📀 Play Entire Playlist Option
+* A prominent **"Play Entire Playlist"** action button has been added directly under the Spotify playlist header cards.
+* Clicking this button automatically queues and plays the entire translated sequence from the very first track in the queue, handling seamless tracking and autoplaying subsequent tracks.
+
+### 🔊 Bypassing Sandbox Iframe Audio Restrictions
+* **The Limitation**: Modern browsers (Chrome, Safari, Edge, etc.) run strict autoplay block security mechanisms when an application runs inside a nested sandboxed iframe (such as developing in AI Studio, preview tools, or inline frames). As a result, the browser prevents the hidden/underlying YouTube audio stream from automatically playing sound.
+* **The Solution**: SyncBridge Pro automatically detects if it is running inside an iframe. If detected, it displays an elegant **floating alert** and a dedicated **"Open in New Tab"** button at the bottom-right control drawer.
+* Clicking **"Open in New Tab"** launches the app in a primary browser context. In a standard top-level tab, the browser grants full audio execution instantly, enabling you to hear premium audio, adjust volume sliders, and autoplay subsequent songs perfectly!
+* **Production Build Note**: Once you commit and push to your production environment (running outside of development frames, as a primary root application), the audio and autoplay features will operate normally from the main page.
+
+---
+
 ## 🛠️ Technical Stack & Architecture
 
 ### **Frontend (SPA/Client-Side)**
