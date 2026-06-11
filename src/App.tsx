@@ -31,7 +31,18 @@ import {
   Layers3,
   Lightbulb,
   Zap,
-  X
+  X,
+  Play,
+  Pause,
+  SkipForward,
+  SkipBack,
+  Shuffle,
+  Repeat,
+  Volume2,
+  VolumeX,
+  Maximize2,
+  Minimize2,
+  Radio
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -98,6 +109,263 @@ export default function App() {
   // Filters state
   const [activeFilter, setActiveFilter] = useState<'all' | 'matched' | 'unresolved'>('all');
   const [previewVideo, setPreviewVideo] = useState<MatchedTrack | null>(null);
+
+  // Premium Audio Player States
+  const [activePlayingTrackId, setActivePlayingTrackId] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackVolume, setPlaybackVolume] = useState(() => {
+    const savedVol = localStorage.getItem("syncify_volume");
+    return savedVol ? parseInt(savedVol, 10) : 75;
+  });
+  const [isMuted, setIsMuted] = useState(false);
+  const [currentTimeSecs, setCurrentTimeSecs] = useState(0);
+  const [trackDurationSecs, setTrackDurationSecs] = useState(180);
+  const [repeatMode, setRepeatMode] = useState<'none' | 'one' | 'all'>('all');
+  const [isShuffled, setIsShuffled] = useState(false);
+  const [showPlayerVideoPreview, setShowPlayerVideoPreview] = useState(false);
+  const [isInsideIframe, setIsInsideIframe] = useState(false);
+  const playerIframeRef = React.useRef<HTMLIFrameElement | null>(null);
+
+  const playableTracks = React.useMemo(() => {
+    return tracks.filter(t => t.videoId && t.status !== "not_found");
+  }, [tracks]);
+
+  const currentPlayingTrack = React.useMemo(() => {
+    return tracks.find(t => t.id === activePlayingTrackId) || null;
+  }, [tracks, activePlayingTrackId]);
+
+  const handlePlayTrack = (track: MatchedTrack) => {
+    if (activePlayingTrackId === track.id) {
+      setIsPlaying(!isPlaying);
+    } else {
+      setActivePlayingTrackId(track.id);
+      setIsPlaying(true);
+      setCurrentTimeSecs(0);
+      const estSecs = track.durationMs ? Math.floor(track.durationMs / 1000) : 180;
+      setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
+    }
+  };
+
+  const handlePlayWholePlaylist = () => {
+    if (playableTracks.length === 0) return;
+    const firstTrack = playableTracks[0];
+    if (firstTrack) {
+      setActivePlayingTrackId(firstTrack.id);
+      setIsPlaying(true);
+      setCurrentTimeSecs(0);
+      const estSecs = firstTrack.durationMs ? Math.floor(firstTrack.durationMs / 1000) : 180;
+      setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
+    }
+  };
+
+  const handleSkipNext = () => {
+    if (playableTracks.length === 0) return;
+    let currentIndex = playableTracks.findIndex(t => t.id === activePlayingTrackId);
+    let nextIndex = 0;
+    if (isShuffled) {
+      nextIndex = Math.floor(Math.random() * playableTracks.length);
+      if (nextIndex === currentIndex && playableTracks.length > 1) {
+        nextIndex = (nextIndex + 1) % playableTracks.length;
+      }
+    } else {
+      if (currentIndex !== -1) {
+        nextIndex = (currentIndex + 1) % playableTracks.length;
+      }
+    }
+    const nextTrack = playableTracks[nextIndex];
+    if (nextTrack) {
+      setActivePlayingTrackId(nextTrack.id);
+      setIsPlaying(true);
+      setCurrentTimeSecs(0);
+      const estSecs = nextTrack.durationMs ? Math.floor(nextTrack.durationMs / 1000) : 180;
+      setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
+    }
+  };
+
+  const handleSkipPrev = () => {
+    if (playableTracks.length === 0) return;
+    let currentIndex = playableTracks.findIndex(t => t.id === activePlayingTrackId);
+    let prevIndex = 0;
+    if (isShuffled) {
+      prevIndex = Math.floor(Math.random() * playableTracks.length);
+    } else {
+      if (currentIndex !== -1) {
+        prevIndex = currentIndex - 1;
+        if (prevIndex < 0) prevIndex = playableTracks.length - 1;
+      }
+    }
+    const prevTrack = playableTracks[prevIndex];
+    if (prevTrack) {
+      setActivePlayingTrackId(prevTrack.id);
+      setIsPlaying(true);
+      setCurrentTimeSecs(0);
+      const estSecs = prevTrack.durationMs ? Math.floor(prevTrack.durationMs / 1000) : 180;
+      setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
+    }
+  };
+
+  const handleTimelineChange = (secs: number) => {
+    setCurrentTimeSecs(secs);
+    if (playerIframeRef.current) {
+      playerIframeRef.current.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: "seekTo", args: [secs, true] }),
+        "*"
+      );
+    }
+  };
+
+  const handleVolumeChange = (vol: number) => {
+    setPlaybackVolume(vol);
+    localStorage.setItem("syncify_volume", String(vol));
+    if (playerIframeRef.current) {
+      playerIframeRef.current.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: "setVolume", args: [vol] }),
+        "*"
+      );
+    }
+  };
+
+  const playbackProgressTimerNextTrigger = () => {
+    if (repeatMode === 'none') {
+      const currentIndex = playableTracks.findIndex(t => t.id === activePlayingTrackId);
+      if (currentIndex === playableTracks.length - 1) {
+        setIsPlaying(false);
+        setCurrentTimeSecs(0);
+      } else {
+        handleSkipNext();
+      }
+    } else {
+      handleSkipNext();
+    }
+  };
+
+  // Local counting timer clock for 100% responsive timeline slider updates
+  useEffect(() => {
+    let timerId: any = null;
+    if (isPlaying && activePlayingTrackId) {
+      timerId = setInterval(() => {
+        setCurrentTimeSecs(prev => {
+          if (prev >= trackDurationSecs) {
+            if (repeatMode === 'one') {
+              if (playerIframeRef.current) {
+                playerIframeRef.current.contentWindow?.postMessage(
+                  JSON.stringify({ event: "command", func: "seekTo", args: [0, true] }),
+                  "*"
+                );
+              }
+              return 0;
+            } else {
+              playbackProgressTimerNextTrigger();
+              return prev;
+            }
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timerId) clearInterval(timerId);
+    };
+  }, [isPlaying, activePlayingTrackId, trackDurationSecs, repeatMode, playableTracks]);
+
+  // Volume and mute controls synchronizer
+  useEffect(() => {
+    if (playerIframeRef.current) {
+      playerIframeRef.current.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: "setVolume", args: [playbackVolume] }),
+        "*"
+      );
+      playerIframeRef.current.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: isMuted ? "mute" : "unMute", args: [] }),
+        "*"
+      );
+    }
+  }, [playbackVolume, isMuted, activePlayingTrackId]);
+
+  // Play/pause controls synchronizer
+  useEffect(() => {
+    if (playerIframeRef.current) {
+      const command = isPlaying ? "playVideo" : "pauseVideo";
+      playerIframeRef.current.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: command, args: [] }),
+        "*"
+      );
+    }
+  }, [isPlaying, activePlayingTrackId]);
+
+  useEffect(() => {
+    setIsInsideIframe(window.self !== window.top);
+  }, []);
+
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+
+  // High frame-rate drawing engine for 60fps translucent bezier wave frequencies
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animationId: number;
+    let phase = 0;
+    
+    const resizeCanvas = () => {
+      canvas.width = canvas.parentElement?.clientWidth || 300;
+      canvas.height = 36;
+    };
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const width = canvas.width;
+      const height = canvas.height;
+      const midY = height / 2;
+      
+      const speed = isPlaying ? 0.08 : 0.01;
+      phase += speed;
+      
+      const targetAmplitude = isPlaying ? 10 : 1.5;
+      const waveColors = [
+        "rgba(29, 185, 84, 0.45)",
+        "rgba(52, 211, 153, 0.25)",
+        "rgba(16, 185, 129, 0.15)"
+      ];
+      
+      waveColors.forEach((color, index) => {
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = index === 0 ? 2 : 1.2;
+        
+        ctx.shadowBlur = isPlaying ? 8 : 0;
+        ctx.shadowColor = "#1DB954";
+        
+        const frequencyMultiplier = 0.008 + index * 0.004;
+        const phaseOffset = index * Math.PI * 0.5;
+        
+        for (let x = 0; x < width; x++) {
+          const edgeFade = Math.sin((x / width) * Math.PI);
+          const y = midY + Math.sin(x * frequencyMultiplier + phase + phaseOffset) * targetAmplitude * edgeFade;
+          if (x === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+      });
+      animationId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+      cancelAnimationFrame(animationId);
+      window.removeEventListener("resize", resizeCanvas);
+    };
+  }, [isPlaying, activePlayingTrackId]);
+
+
 
   // Action Modals State
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -1089,6 +1357,18 @@ export default function App() {
                   {playlistMeta?.description && (
                     <p className="text-sm text-[#a1a1aa]" dangerouslySetInnerHTML={{ __html: playlistMeta.description }} />
                   )}
+                  {playableTracks.length > 0 && (
+                    <div className="mt-3.5 flex flex-wrap gap-3">
+                      <button 
+                        onClick={handlePlayWholePlaylist}
+                        className="px-5 py-2.5 bg-[#1DB954] hover:bg-emerald-400 text-black font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(29,185,84,0.3)] flex items-center gap-2 cursor-pointer active:scale-95"
+                        title="Start playing the whole playlist automatically"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-black text-black" />
+                        Play Entire Playlist
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Performance stats mini card */}
@@ -1210,6 +1490,9 @@ export default function App() {
                           onSearchAgain={triggerSearchForTrack}
                           isSearchingRow={!!searchIndicesInProgress[track.id]}
                           onPreviewTrack={setPreviewVideo}
+                          activePlayingTrackId={activePlayingTrackId}
+                          isPlaying={isPlaying}
+                          onPlayTrack={handlePlayTrack}
                         />
                       </motion.div>
                     ))}
@@ -1426,6 +1709,271 @@ export default function App() {
         </AnimatePresence>
 
       </main>
+
+      {/* The real underlying YouTube IFrame API Player engine */}
+      {currentPlayingTrack && (
+        <div className={`fixed transition-all duration-300 ${
+          showPlayerVideoPreview 
+            ? "bottom-24 right-4 w-60 h-36 border-2 border-[#1DB954] rounded-xl shadow-[0_0_20px_rgba(29,185,84,0.3)] overflow-hidden opacity-100 z-50 pointer-events-auto bg-black" 
+            : "w-60 h-36 opacity-0 pointer-events-none fixed bottom-24 right-4 translate-x-[9999px]"
+        }`}>
+          {/* Visual indicator stamp overlay on video tray */}
+          {showPlayerVideoPreview && (
+            <div className="absolute top-1.5 left-1.5 bg-black/80 backdrop-blur text-[8px] uppercase tracking-widest text-[#1DB954] font-bold px-1.5 py-0.5 rounded border border-[#1DB954]/20 flex items-center gap-1 z-10 select-none">
+              <span className="w-1.5 h-1.5 bg-[#1DB954] rounded-full animate-pulse" /> Live Feed
+            </div>
+          )}
+          <iframe
+            ref={playerIframeRef}
+            src={`https://www.youtube.com/embed/${currentPlayingTrack.videoId}?enablejsapi=1&autoplay=1&controls=0&mute=${isMuted ? "1" : "0"}&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.origin)}`}
+            title="Syncify Premium Streaming Core"
+            className="w-full h-full border-0 select-none"
+            allow="autoplay; encrypted-media"
+          />
+        </div>
+      )}
+
+      {/* Absolute Premium Floating Mini/Compact Media Player */}
+      <AnimatePresence>
+        {currentPlayingTrack && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 220, damping: 25 }}
+            className="fixed bottom-0 left-0 right-0 z-40 bg-[#0c0c0e]/95 border-t border-[#27272a]/70 backdrop-blur-xl shadow-[0_-10px_35px_rgba(0,0,0,0.6)] px-4 py-3.5 md:px-6 flex flex-col md:flex-row items-center justify-between gap-3 text-white transition-all select-none"
+          >
+            {/* Elegant warning pill floating above player if inside iframe */}
+            {isInsideIframe && (
+              <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-3 py-1 bg-amber-500/15 border border-amber-500/25 text-[10px] text-amber-300 rounded-full flex items-center gap-1.5 shadow-md backdrop-blur-md">
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+                <span>Audio autoplay blocked inside sandboxes.</span>
+                <button 
+                  onClick={() => window.open(window.location.href, '_blank')}
+                  className="underline hover:text-white font-bold flex items-center gap-0.5 cursor-pointer"
+                >
+                  Open in New Tab ↗
+                </button>
+              </div>
+            )}
+
+            {/* LEFT COMPARTMENT: Vintage Vinyl artwork disk & Song metadata */}
+            <div className="flex items-center gap-4 w-full md:w-1/4 min-w-0">
+              <div 
+                onClick={() => setIsPlaying(!isPlaying)}
+                className="relative flex-shrink-0 w-12 h-12 rounded-full bg-black border border-zinc-850 shadow-xl overflow-hidden group flex items-center justify-center cursor-pointer"
+              >
+                {currentPlayingTrack.artworkUrl ? (
+                  <img
+                    src={currentPlayingTrack.artworkUrl}
+                    alt={currentPlayingTrack.title}
+                    className={`w-full h-full object-cover transition-transform select-none ${
+                      isPlaying ? "spin-slow" : "spin-slow spin-paused"
+                    }`}
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <Music className="w-5 h-5 text-[#1DB954]" />
+                )}
+                
+                {/* Real aesthetic design: the reflective vinyl ridge curves and metallic dot core, making it feel 100% like premium audio equipment */}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,rgba(255,255,255,0.06)_40%,transparent_50%,rgba(255,255,255,0.08)_60%,transparent_70%)] pointer-events-none rounded-full" />
+                <div className="absolute w-2.5 h-2.5 bg-[#09090b] border border-zinc-700 rounded-full flex items-center justify-center pointer-events-none z-10">
+                  <div className="w-1 h-1 bg-white rounded-full" />
+                </div>
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <h5 className="text-xs md:text-sm font-bold text-white truncate max-w-[130px] md:max-w-[180px]" title={currentPlayingTrack.title}>
+                  {currentPlayingTrack.title}
+                </h5>
+                <p className="text-[10px] md:text-xs text-[#71717a] truncate mt-0.5" title={currentPlayingTrack.artist}>
+                  {currentPlayingTrack.artist}
+                </p>
+                {/* Visual indicator highlighting Youtube source match status */}
+                <span className="inline-flex items-center gap-1 text-[8px] text-[#1DB954] mt-1 font-bold bg-[#1DB954]/10 border border-[#1DB954]/20 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                  <Youtube className="w-2.5 h-2.5 text-red-500 fill-red-500" /> YouTube Match
+                </span>
+              </div>
+
+              {/* Action to toggle the floating compact TV screen feed */}
+              <button
+                onClick={() => setShowPlayerVideoPreview(!showPlayerVideoPreview)}
+                className={`p-2 rounded-xl transition-all cursor-pointer ${
+                  showPlayerVideoPreview 
+                    ? "text-[#1DB954] bg-[#1DB954]/10 border border-[#1DB954]/20" 
+                    : "text-zinc-400 hover:text-white hover:bg-zinc-950 border border-transparent"
+                }`}
+                title="Toggle Live Video Feed Panel"
+              >
+                <Radio className={`w-3.5 h-3.5 ${showPlayerVideoPreview ? 'animate-pulse' : ''}`} />
+              </button>
+            </div>
+
+            {/* MIDDLE COMPARTMENT: Core playback, Frequency sound wave canvas, timeline progress slider */}
+            <div className="flex flex-col items-center gap-1.5 w-full md:w-2/4">
+              
+              {/* Controls button group */}
+              <div className="flex items-center gap-4">
+                {/* Shuffle Toggle */}
+                <button
+                  onClick={() => setIsShuffled(!isShuffled)}
+                  className={`p-1.5 rounded-full transition-colors relative cursor-pointer ${
+                    isShuffled ? "text-[#1DB954]" : "text-zinc-500 hover:text-white"
+                  }`}
+                  title={isShuffled ? "Shuffle active" : "Shuffle tracks"}
+                >
+                  <Shuffle className="w-3.5 h-3.5" />
+                  {isShuffled && <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#1DB954]" />}
+                </button>
+
+                {/* Previous */}
+                <button
+                  onClick={handleSkipPrev}
+                  className="p-1.5 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  title="Previous song"
+                >
+                  <SkipBack className="w-4 h-4 fill-current" />
+                </button>
+
+                {/* Play/Pause Green Orb Circle */}
+                <button
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className="w-9 h-9 rounded-full bg-[#1DB954] text-[#09090b] flex items-center justify-center shadow-lg cursor-pointer hover:scale-105 active:scale-95 transition-all text-center focus:outline-none"
+                  title={isPlaying ? "Pause" : "Play"}
+                >
+                  {isPlaying ? (
+                    <Pause className="w-3.5 h-3.5 fill-current text-[#09090b]" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 fill-current ml-0.5 text-[#09090b]" />
+                  )}
+                </button>
+
+                {/* Next */}
+                <button
+                  onClick={handleSkipNext}
+                  className="p-1.5 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  title="Next song"
+                >
+                  <SkipForward className="w-4 h-4 fill-current" />
+                </button>
+
+                {/* Repeat Mode Toggle */}
+                <button
+                  onClick={() => {
+                    if (repeatMode === 'all') setRepeatMode('one');
+                    else if (repeatMode === 'one') setRepeatMode('none');
+                    else setRepeatMode('all');
+                  }}
+                  className={`p-1.5 rounded-full transition-colors relative cursor-pointer ${
+                    repeatMode !== 'none' ? "text-[#1DB954]" : "text-zinc-500 hover:text-white"
+                  }`}
+                  title={repeatMode === 'one' ? "Repeat One" : repeatMode === 'all' ? "Repeat All" : "Repeat Disabled"}
+                >
+                  <Repeat className="w-3.5 h-3.5" />
+                  {repeatMode !== 'none' && (
+                    <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#1DB954]" />
+                  )}
+                  {repeatMode === 'one' && (
+                    <span className="absolute -top-1 -right-1 text-[7px] font-bold bg-[#1DB954] text-[#09090b] rounded-full w-2.5 h-2.5 flex items-center justify-center scale-90">1</span>
+                  )}
+                </button>
+              </div>
+
+              {/* Interactive dynamic responsive audio waveform visualizer render */}
+              <div className="w-full relative px-2 max-w-[280px] hidden sm:block h-7 flex items-center justify-center overflow-hidden">
+                <canvas
+                  ref={canvasRef}
+                  className="w-full h-full opacity-90 transition-opacity"
+                />
+              </div>
+
+              {/* Timeline and clock readings */}
+              <div className="w-full flex items-center gap-3 max-w-lg">
+                {/* Clock elapsed progress text */}
+                <span className="text-[9px] font-mono text-zinc-500 w-8 text-right select-none">
+                  {Math.floor(currentTimeSecs / 60)}:
+                  {String(currentTimeSecs % 60).padStart(2, "0")}
+                </span>
+
+                {/* Timeline slider range */}
+                <div className="flex-1 relative group py-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max={trackDurationSecs}
+                    value={currentTimeSecs}
+                    onChange={(e) => handleTimelineChange(parseInt(e.target.value, 10))}
+                    className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#1DB954] outline-none group-hover:bg-zinc-700 transition-all"
+                    style={{
+                      background: `linear-gradient(to right, #1DB954 ${
+                        (currentTimeSecs / trackDurationSecs) * 100
+                      }%, #27272a ${(currentTimeSecs / trackDurationSecs) * 100}%)`,
+                    }}
+                  />
+                </div>
+
+                {/* Clock total track duration text */}
+                <span className="text-[9px] font-mono text-zinc-500 w-8 select-none">
+                  {Math.floor(trackDurationSecs / 60)}:
+                  {String(trackDurationSecs % 60).padStart(2, "0")}
+                </span>
+              </div>
+
+            </div>
+
+            {/* RIGHT COMPARTMENT: Volume controller, mute toggles */}
+            <div className="flex items-center justify-end gap-2.5 w-full md:w-1/4">
+              <button
+                onClick={() => setIsMuted(!isMuted)}
+                className="p-1.5 text-zinc-400 hover:text-[#1DB954] transition-colors cursor-pointer"
+                title={isMuted ? "Unmute sound" : "Mute sound"}
+              >
+                {isMuted || playbackVolume === 0 ? (
+                  <VolumeX className="w-4 h-4 text-red-500 animate-pulse" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-[#1DB954]" />
+                )}
+              </button>
+
+              <div className="w-20 group py-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={isMuted ? 0 : playbackVolume}
+                  onChange={(e) => {
+                    const vol = parseInt(e.target.value, 10);
+                    handleVolumeChange(vol);
+                    if (isMuted && vol > 0) setIsMuted(false);
+                  }}
+                  className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#1DB954] outline-none group-hover:bg-zinc-700 transition-all"
+                  style={{
+                    background: `linear-gradient(to right, #1DB954 ${
+                      isMuted ? 0 : playbackVolume
+                    }%, #27272a ${isMuted ? 0 : playbackVolume}%)`,
+                  }}
+                />
+              </div>
+
+              <span className="text-[9px] font-mono text-zinc-500 w-8 select-none">
+                {isMuted ? 0 : playbackVolume}%
+              </span>
+
+              {/* Seamless Button to Launch App on Full Tab context for perfect sound */}
+              <button
+                onClick={() => window.open(window.location.href, '_blank')}
+                className="ml-1 px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-[#1DB954] rounded-lg shadow-md transition-all cursor-pointer flex items-center gap-1.5 text-[9px] tracking-wide font-bold uppercase"
+                title="Launch Playback in a standard Browser Tab to bypass frame cross-origin autoplay restrictions and hear premium output audio instantly!"
+              >
+                <Maximize2 className="w-3 h-3 text-[#1DB954] animate-pulse" />
+                <span className="hidden xl:inline">New Tab</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

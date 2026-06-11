@@ -114,3 +114,48 @@ body {
   }
 }
 
+/* Equalizer bar wave animation for playlist rows */
+@keyframes barWave {
+  0%, 100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-bar-wave-1 {
+  animation: barWave 0.8s ease-in-out infinite;
+  transform-origin: bottom;
+}
+
+.animate-bar-wave-2 {
+  animation: barWave 1.1s ease-in-out infinite;
+  transform-origin: bottom;
+  animation-delay: 0.15s;
+}
+
+.animate-bar-wave-3 {
+  animation: barWave 0.9s ease-in-out infinite;
+  transform-origin: bottom;
+  animation-delay: 0.3s;
+}
+
+/* Vinyl spin animation */
+@keyframes vinyl-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin-slow {
+  animation: vinyl-spin 12s linear infinite;
+}
+
+.spin-paused {
+  animation-play-state: paused;
+}
+

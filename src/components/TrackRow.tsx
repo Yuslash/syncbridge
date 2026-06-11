@@ -13,7 +13,9 @@ import {
   Trash2, 
   Play, 
   Sparkles,
-  Pencil
+  Pencil,
+  Pause,
+  Volume2
 } from "lucide-react";
 
 export function extractYouTubeId(url: string): string | null {
@@ -35,9 +37,22 @@ interface TrackRowProps {
   onSearchAgain: (trackId: string) => Promise<void>;
   isSearchingRow: boolean;
   onPreviewTrack?: (track: MatchedTrack) => void;
+  activePlayingTrackId?: string | null;
+  isPlaying?: boolean;
+  onPlayTrack?: (track: MatchedTrack) => void;
 }
 
-export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchingRow, onPreviewTrack }: TrackRowProps) {
+export function TrackRow({ 
+  track, 
+  index, 
+  onUpdateTrack, 
+  onSearchAgain, 
+  isSearchingRow, 
+  onPreviewTrack,
+  activePlayingTrackId = null,
+  isPlaying = false,
+  onPlayTrack
+}: TrackRowProps) {
   const [manualInput, setManualInput] = useState("");
   const [manualError, setManualError] = useState("");
   const [localSearchQuery, setLocalSearchQuery] = useState(`${track.artist} ${track.title}`);
@@ -144,49 +159,123 @@ export function TrackRow({ track, index, onUpdateTrack, onSearchAgain, isSearchi
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
-  const hasYouTubeMatch = track.videoId && track.status !== "not_found";
+  const hasYouTubeMatch = !!(track.videoId && track.status !== "not_found");
+  const isCurrentActive = activePlayingTrackId === track.id;
+  const isCurrentPlaying = isCurrentActive && isPlaying;
+
+  const handleRowPlayClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onPlayTrack) {
+      if (hasYouTubeMatch) {
+        onPlayTrack(track);
+      } else {
+        // Find alternative video or search row suggestion. If not matched, we can still load to trigger preview
+        onPlayTrack(track);
+      }
+    }
+  };
 
   return (
     <div 
-      className={`grid grid-cols-1 md:grid-cols-12 gap-4 py-4 px-5 border-b border-[#18181b] items-center transition-all ${
-        hasYouTubeMatch ? "bg-transparent hover:bg-[#111113]" : "bg-[#1a1414] hover:bg-[#201818]"
+      onDoubleClick={handleRowPlayClick}
+      className={`grid grid-cols-1 md:grid-cols-12 gap-4 py-4 px-5 border-b border-[#18181b] items-center transition-all group cursor-pointer ${
+        isCurrentActive 
+          ? "bg-[#1db954]/5 border-l-2 border-l-[#1DB954]"
+          : hasYouTubeMatch 
+            ? "bg-transparent hover:bg-[#111113]" 
+            : "bg-[#1a1414] hover:bg-[#201818]"
       }`}
     >
       {/* Index and Spotify Info */}
       <div className="md:col-span-5 flex items-center justify-between md:justify-start gap-4">
         <div className="flex items-center gap-4 min-w-0">
-          {/* Track Number */}
-          <span className="font-mono text-sm text-[#52525b] w-6 text-right flex-shrink-0">
-            {String(index + 1).padStart(2, '0')}
-          </span>
+          {/* Track Number Index Play/Pause Button overlay */}
+          <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 relative">
+            {isCurrentActive ? (
+              isCurrentPlaying ? (
+                <button 
+                  onClick={handleRowPlayClick} 
+                  className="text-[#1DB954] hover:text-green-400 cursor-pointer focus:outline-none flex items-center justify-center"
+                  title="Pause song"
+                >
+                  {/* Active equalizer animation bars */}
+                  <div className="flex items-end gap-[2px] h-3 w-3 group-hover:hidden">
+                    <div className="w-[2.5px] bg-[#1DB954] rounded-full animate-bar-wave-1 h-3" />
+                    <div className="w-[2.5px] bg-[#1DB954] rounded-full animate-bar-wave-2 h-4" />
+                    <div className="w-[2.5px] bg-[#1DB954] rounded-full animate-bar-wave-3 h-2" />
+                  </div>
+                  <Pause className="w-4 h-4 hidden group-hover:block fill-[#1DB954]" />
+                </button>
+              ) : (
+                <button 
+                  onClick={handleRowPlayClick} 
+                  className="text-[#1DB954] hover:text-green-400 cursor-pointer focus:outline-none flex items-center justify-center"
+                  title="Play song"
+                >
+                  <Play className="w-4 h-4 fill-[#1DB954] text-[#1DB954]" />
+                </button>
+              )
+            ) : (
+              <>
+                <span className="font-mono text-xs text-[#52525b] group-hover:hidden select-none">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                <button 
+                  onClick={handleRowPlayClick}
+                  className="hidden group-hover:block text-white hover:text-[#1DB954] cursor-pointer focus:outline-none transition-colors"
+                  title="Play Track"
+                >
+                  <Play className="w-4 h-4 fill-white hover:fill-[#1DB954] hover:text-[#1DB954]" />
+                </button>
+              </>
+            )}
+          </div>
 
           {/* Artwork */}
-          <div className="w-11 h-11 rounded overflow-hidden bg-[#27272a] flex items-center justify-center flex-shrink-0 border border-[#3f3f46]/35 shadow-md">
+          <div 
+            onClick={handleRowPlayClick}
+            className={`w-11 h-11 rounded overflow-hidden bg-[#27272a] flex items-center justify-center flex-shrink-0 border shadow-md relative group/art-click ${
+              isCurrentActive ? "border-[#1DB954]/50" : "border-[#3f3f46]/35"
+            }`}
+          >
             {track.artworkUrl ? (
               <img 
                 src={track.artworkUrl} 
                 alt={track.title} 
-                className="w-full h-full object-cover" 
+                className={`w-full h-full object-cover select-none transition-transform duration-300 ${isCurrentPlaying ? 'spin-slow' : ''}`}
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <Music className="w-4 h-4 text-[#1DB954]" />
+              <Music className={`w-4 h-4 ${isCurrentActive ? 'text-[#1DB954]' : 'text-[#71717a]'}`} />
+            )}
+            
+            {/* Dark vinyl center dot decoration overlay for visual premium identity */}
+            {isCurrentPlaying && track.artworkUrl && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="w-2.5 h-2.5 rounded-full bg-black border border-zinc-800" />
+              </div>
             )}
           </div>
-
+          
           {/* Title and Artist */}
           <div className="min-w-0 pr-2 overflow-hidden max-w-[130px] sm:max-w-none">
             <h4 
-              className={`text-sm font-medium text-[#fafafa] hover:text-[#1DB954] transition-colors ${
-                track.title.length > 15 ? "mobile-marquee-title" : "truncate w-full"
+              className={`text-sm font-semibold transition-colors ${
+                isCurrentActive 
+                  ? "text-[#1DB954]" 
+                  : "text-[#fafafa] hover:text-[#1DB954]"
+              } ${
+                track.title.length > 22 ? "mobile-marquee-title" : "truncate w-full"
               }`} 
               title={track.title}
             >
               {track.title}
             </h4>
             <p 
-              className={`text-xs text-[#71717a] mt-0.5 ${
-                track.artist.length > 18 ? "mobile-marquee-artist" : "truncate w-full"
+              className={`text-xs mt-0.5 ${
+                isCurrentActive ? "text-emerald-400/80" : "text-[#71717a]"
+              } ${
+                track.artist.length > 25 ? "mobile-marquee-artist" : "truncate w-full"
               }`} 
               title={track.artist}
             >
