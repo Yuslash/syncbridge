@@ -1757,55 +1757,47 @@ export default function App() {
       {currentPlayingTrack && (
         <motion.div
           animate={{
-            width: !showPlayerVideoPreview 
-              ? 240 
-              : isVideoFullscreen 
-                ? "100vw" 
-                : 240,
-            height: !showPlayerVideoPreview 
-              ? 144 
-              : isVideoFullscreen 
-                ? "100vh" 
-                : 144,
-            bottom: !showPlayerVideoPreview 
-              ? 96 
-              : isVideoFullscreen 
-                ? 0 
-                : 96,
-            right: !showPlayerVideoPreview 
-              ? 16 
-              : isVideoFullscreen 
-                ? 0 
-                : 16,
-            borderRadius: isVideoFullscreen && showPlayerVideoPreview ? 0 : 12,
+            width: isVideoFullscreen && showPlayerVideoPreview
+              ? "100vw"
+              : 280,
+            height: isVideoFullscreen && showPlayerVideoPreview
+              ? "100vh"
+              : 158,
+            bottom: isVideoFullscreen && showPlayerVideoPreview
+              ? 0
+              : 96,
+            right: isVideoFullscreen && showPlayerVideoPreview
+              ? 0
+              : 16,
+            borderRadius: isVideoFullscreen && showPlayerVideoPreview ? 0 : 16,
             borderWidth: isVideoFullscreen && showPlayerVideoPreview ? 0 : 2,
             borderColor: isVideoFullscreen && showPlayerVideoPreview ? "transparent" : "#1DB954",
             opacity: showPlayerVideoPreview ? 1 : 0,
-            x: showPlayerVideoPreview ? 0 : 9999, // Offscreen instead of unmount to keep playing
-            scale: showPlayerVideoPreview ? 1 : 0.95,
+            scale: showPlayerVideoPreview ? 1 : 0.85,
+            pointerEvents: showPlayerVideoPreview ? "auto" : "none",
             boxShadow: isVideoFullscreen && showPlayerVideoPreview 
               ? "none" 
-              : "0 0 20px rgba(29,185,84,0.3)"
+              : "0 10px 40px rgba(0,0,0,0.5), 0 0 20px rgba(29,185,84,0.15)"
           }}
           transition={{
             type: "spring",
-            stiffness: 250,
-            damping: 26,
+            stiffness: 280,
+            damping: 30,
             mass: 0.8
           }}
           style={{ position: "fixed" }}
-          className="bg-black overflow-hidden z-50 pointer-events-auto shadow-2xl"
+          className="bg-black overflow-hidden z-50 shadow-2xl"
         >
           {/* Visual indicator stamp overlay on video tray */}
           {showPlayerVideoPreview && (
-            <div className="absolute top-1.5 left-1.5 bg-black/80 backdrop-blur text-[8px] uppercase tracking-widest text-[#1DB954] font-bold px-1.5 py-0.5 rounded border border-[#1DB954]/20 flex items-center gap-1 z-10 select-none">
+            <div key="live-feed-badge" className="absolute top-1.5 left-1.5 bg-black/80 backdrop-blur text-[8px] uppercase tracking-widest text-[#1DB954] font-bold px-1.5 py-0.5 rounded border border-[#1DB954]/20 flex items-center gap-1 z-10 select-none">
               <span className="w-1.5 h-1.5 bg-[#1DB954] rounded-full animate-pulse" /> Live Feed {isVideoFullscreen && "(Fullscreen Mode)"}
             </div>
           )}
-
+          
           {/* Fullscreen control overlay buttons */}
           {showPlayerVideoPreview && (
-            <div className="absolute top-1.5 right-1.5 flex gap-1.5 z-10">
+            <div key="live-feed-controls" className="absolute top-1.5 right-1.5 flex gap-1.5 z-10">
               <button
                 onClick={() => setIsVideoFullscreen(!isVideoFullscreen)}
                 className="bg-black/80 hover:bg-black/95 text-white hover:text-[#1DB954] p-1.5 rounded-lg border border-[#1DB954]/20 hover:border-[#1DB954]/55 shadow-md flex items-center justify-center transition-all cursor-pointer active:scale-90"
@@ -1821,10 +1813,11 @@ export default function App() {
           )}
 
           <iframe
+            key="core-youtube-player-iframe"
             ref={playerIframeRef}
             src={`https://www.youtube.com/embed/${currentPlayingTrack.videoId}?enablejsapi=1&autoplay=1&controls=1&mute=0&cc_load_policy=0&iv_load_policy=3&hl=en&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.origin)}`}
             title="Syncify Premium Streaming Core"
-            className="w-full h-full border-0 select-none animate-fade-in"
+            className="w-full h-full border-0 select-none"
             allow="autoplay; encrypted-media"
           />
         </motion.div>
