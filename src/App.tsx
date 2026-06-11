@@ -1755,13 +1755,47 @@ export default function App() {
 
       {/* The real underlying YouTube IFrame API Player engine */}
       {currentPlayingTrack && (
-        <div className={`fixed transition-all duration-300 ${
-          showPlayerVideoPreview 
-            ? isVideoFullscreen
-              ? "inset-0 w-screen h-screen bg-black border-0 rounded-none shadow-none z-50 pointer-events-auto"
-              : "bottom-24 right-4 w-60 h-36 border-2 border-[#1DB954] rounded-xl shadow-[0_0_20px_rgba(29,185,84,0.3)] overflow-hidden opacity-100 z-50 pointer-events-auto bg-black" 
-            : "w-60 h-36 opacity-0 pointer-events-none fixed bottom-24 right-4 translate-x-[9999px] z-50"
-        }`}>
+        <motion.div
+          animate={{
+            width: !showPlayerVideoPreview 
+              ? 240 
+              : isVideoFullscreen 
+                ? "100vw" 
+                : 240,
+            height: !showPlayerVideoPreview 
+              ? 144 
+              : isVideoFullscreen 
+                ? "100vh" 
+                : 144,
+            bottom: !showPlayerVideoPreview 
+              ? 96 
+              : isVideoFullscreen 
+                ? 0 
+                : 96,
+            right: !showPlayerVideoPreview 
+              ? 16 
+              : isVideoFullscreen 
+                ? 0 
+                : 16,
+            borderRadius: isVideoFullscreen && showPlayerVideoPreview ? 0 : 12,
+            borderWidth: isVideoFullscreen && showPlayerVideoPreview ? 0 : 2,
+            borderColor: isVideoFullscreen && showPlayerVideoPreview ? "transparent" : "#1DB954",
+            opacity: showPlayerVideoPreview ? 1 : 0,
+            x: showPlayerVideoPreview ? 0 : 9999, // Offscreen instead of unmount to keep playing
+            scale: showPlayerVideoPreview ? 1 : 0.95,
+            boxShadow: isVideoFullscreen && showPlayerVideoPreview 
+              ? "none" 
+              : "0 0 20px rgba(29,185,84,0.3)"
+          }}
+          transition={{
+            type: "spring",
+            stiffness: 250,
+            damping: 26,
+            mass: 0.8
+          }}
+          style={{ position: "fixed" }}
+          className="bg-black overflow-hidden z-50 pointer-events-auto shadow-2xl"
+        >
           {/* Visual indicator stamp overlay on video tray */}
           {showPlayerVideoPreview && (
             <div className="absolute top-1.5 left-1.5 bg-black/80 backdrop-blur text-[8px] uppercase tracking-widest text-[#1DB954] font-bold px-1.5 py-0.5 rounded border border-[#1DB954]/20 flex items-center gap-1 z-10 select-none">
@@ -1788,12 +1822,12 @@ export default function App() {
 
           <iframe
             ref={playerIframeRef}
-            src={`https://www.youtube.com/embed/${currentPlayingTrack.videoId}?enablejsapi=1&autoplay=1&controls=${isVideoFullscreen ? "1" : "0"}&mute=${isMuted ? "1" : "0"}&cc_load_policy=0&iv_load_policy=3&hl=en&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.origin)}`}
+            src={`https://www.youtube.com/embed/${currentPlayingTrack.videoId}?enablejsapi=1&autoplay=1&controls=1&mute=0&cc_load_policy=0&iv_load_policy=3&hl=en&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.origin)}`}
             title="Syncify Premium Streaming Core"
-            className="w-full h-full border-0 select-none"
+            className="w-full h-full border-0 select-none animate-fade-in"
             allow="autoplay; encrypted-media"
           />
-        </div>
+        </motion.div>
       )}
 
       {/* Absolute Premium Floating Mini/Compact Media Player */}
