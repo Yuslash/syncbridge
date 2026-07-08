@@ -1396,7 +1396,7 @@ export default function App() {
                       : "text-white/60 hover:text-white hover:bg-white/5"
                   }`}
                 >
-                  <Music className={`w-3.5 h-3.5 ${homeTab === 'playlist' ? 'fill-black text-black' : 'text-white/60'}`} />
+                  <Music className={`w-3.5 h-3.5 ${homeTab === 'playlist' ? 'text-black' : 'text-white/60'}`} />
                   <span>Convert Playlist</span>
                 </button>
               </div>
@@ -1422,7 +1422,7 @@ export default function App() {
                     <div className="relative flex-1">
                       <input 
                         type="text"
-                        className="w-full h-14 vision-glass-input rounded-xl px-5 pl-12 text-sm text-[#fafafa] placeholder-white/30 font-medium focus:outline-none transition-all shadow-inner"
+                        className="w-full h-14 vision-glass-input rounded-xl px-5 pl-12 pr-12 text-sm text-[#fafafa] placeholder-white/30 font-medium focus:outline-none transition-all shadow-inner"
                         placeholder="e.g. https://open.spotify.com/playlist/37i9dQZF1DXcBWIGsy3985"
                         value={spotifyUrl}
                         onChange={(e) => {
@@ -1431,8 +1431,7 @@ export default function App() {
                         }}
                         onKeyDown={(e) => e.key === "Enter" && startConversion(spotifyUrl)}
                       />
-                      <Music className="absolute left-4 top-[17px] w-5 h-5 text-white" />
-                      <div className="absolute right-4 top-4 text-xs font-mono text-white/30 uppercase tracking-widest hidden md:block">Spotify URL</div>
+                      <Music className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#10B981]" />
                     </div>
 
                     <button 

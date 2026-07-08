@@ -222,7 +222,7 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
                 }
               }}
             />
-            <Music className="absolute left-4 top-[17px] w-5 h-5 text-white/60" />
+            <Music className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#10B981]" />
             <button
               onClick={async () => {
                 try {
@@ -235,7 +235,7 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
                   setErrorMsg("Could not access clipboard. Please paste manually.");
                 }
               }}
-              className="absolute right-4 top-[15px] p-1.5 bg-white/10 hover:bg-white/20 text-white/60 hover:text-white rounded-lg transition-all"
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 bg-white/10 hover:bg-white/20 text-white/60 hover:text-white rounded-lg transition-all"
               title="Paste from clipboard"
             >
               <Clipboard className="w-4 h-4" />
