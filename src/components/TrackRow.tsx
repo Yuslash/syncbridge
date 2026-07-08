@@ -178,64 +178,66 @@ export function TrackRow({
   return (
     <div 
       onDoubleClick={handleRowPlayClick}
-      className={`grid grid-cols-1 md:grid-cols-12 gap-4 py-4 px-5 border-b border-[#18181b] items-center transition-all group cursor-pointer ${
+      className={`grid grid-cols-1 md:grid-cols-12 gap-4 py-4 px-5 border-b border-white/5 items-center transition-all group cursor-pointer ${
         isCurrentActive 
-          ? "bg-[#1db954]/5 border-l-2 border-l-[#1DB954]"
+          ? "bg-[#E4C58E]/5 border-l-2 border-l-[#E4C58E] shadow-[inset_0_1px_4px_rgba(228,197,142,0.15)]"
           : hasYouTubeMatch 
-            ? "bg-transparent hover:bg-[#111113]" 
-            : "bg-[#1a1414] hover:bg-[#201818]"
+            ? "bg-transparent hover:bg-white/5" 
+            : "bg-red-500/5 hover:bg-red-500/10"
       }`}
     >
       {/* Index and Spotify Info */}
       <div className="md:col-span-5 flex items-center justify-between md:justify-start gap-4">
         <div className="flex items-center gap-4 min-w-0">
           {/* Track Number Index Play/Pause Button overlay */}
-          <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 relative">
+          <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 relative font-sans">
             {isCurrentActive ? (
               isCurrentPlaying ? (
                 <button 
                   onClick={handleRowPlayClick} 
-                  className="text-[#1DB954] hover:text-green-400 cursor-pointer focus:outline-none flex items-center justify-center"
+                  className="text-white hover:text-white/80 cursor-pointer focus:outline-none flex items-center justify-center"
                   title="Pause song"
                 >
                   {/* Active equalizer animation bars */}
                   <div className="flex items-end gap-[2px] h-3 w-3 group-hover:hidden">
-                    <div className="w-[2.5px] bg-[#1DB954] rounded-full animate-bar-wave-1 h-3" />
-                    <div className="w-[2.5px] bg-[#1DB954] rounded-full animate-bar-wave-2 h-4" />
-                    <div className="w-[2.5px] bg-[#1DB954] rounded-full animate-bar-wave-3 h-2" />
+                    <div className="w-[2.5px] bg-[#E4C58E] rounded-full animate-bar-wave-1 h-3" />
+                    <div className="w-[2.5px] bg-[#E4C58E] rounded-full animate-bar-wave-2 h-4" />
+                    <div className="w-[2.5px] bg-[#E4C58E] rounded-full animate-bar-wave-3 h-2" />
                   </div>
-                  <Pause className="w-4 h-4 hidden group-hover:block fill-[#1DB954]" />
+                  <Pause className="w-4 h-4 hidden group-hover:block fill-[#E4C58E] text-[#E4C58E]" />
                 </button>
               ) : (
                 <button 
                   onClick={handleRowPlayClick} 
-                  className="text-[#1DB954] hover:text-green-400 cursor-pointer focus:outline-none flex items-center justify-center"
+                  className="text-white hover:text-white/80 cursor-pointer focus:outline-none flex items-center justify-center"
                   title="Play song"
                 >
-                  <Play className="w-4 h-4 fill-[#1DB954] text-[#1DB954]" />
+                  <Play className="w-4 h-4 fill-[#E4C58E] text-[#E4C58E]" />
                 </button>
               )
             ) : (
               <>
-                <span className="font-mono text-xs text-[#52525b] group-hover:hidden select-none">
+                <span className="font-mono text-xs text-white/40 group-hover:hidden select-none">
                   {String(index + 1).padStart(2, '0')}
                 </span>
                 <button 
                   onClick={handleRowPlayClick}
-                  className="hidden group-hover:block text-white hover:text-[#1DB954] cursor-pointer focus:outline-none transition-colors"
+                  className="hidden group-hover:block text-[#E4C58E] hover:text-[#E4C58E]/80 cursor-pointer focus:outline-none transition-colors"
                   title="Play Track"
                 >
-                  <Play className="w-4 h-4 fill-white hover:fill-[#1DB954] hover:text-[#1DB954]" />
+                  <Play className="w-4 h-4 fill-[#E4C58E] text-[#E4C58E]" />
                 </button>
               </>
             )}
           </div>
+        </div>
 
+        <div className="flex items-center gap-4 min-w-0 flex-1">
           {/* Artwork */}
           <div 
             onClick={handleRowPlayClick}
-            className={`w-11 h-11 rounded overflow-hidden bg-[#27272a] flex items-center justify-center flex-shrink-0 border shadow-md relative group/art-click ${
-              isCurrentActive ? "border-[#1DB954]/50" : "border-[#3f3f46]/35"
+            className={`w-11 h-11 rounded-lg overflow-hidden bg-white/5 flex items-center justify-center flex-shrink-0 border shadow-md relative group/art-click ${
+              isCurrentActive ? "border-[#E4C58E]/60" : "border-white/10"
             }`}
           >
             {track.artworkUrl ? (
@@ -246,24 +248,24 @@ export function TrackRow({
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <Music className={`w-4 h-4 ${isCurrentActive ? 'text-[#1DB954]' : 'text-[#71717a]'}`} />
+              <Music className={`w-4 h-4 ${isCurrentActive ? 'text-[#E4C58E]' : 'text-white/40'}`} />
             )}
             
             {/* Dark vinyl center dot decoration overlay for visual premium identity */}
             {isCurrentPlaying && track.artworkUrl && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-2.5 h-2.5 rounded-full bg-black border border-zinc-800" />
+                <div className="w-2.5 h-2.5 rounded-full bg-black border border-white/20" />
               </div>
             )}
           </div>
           
           {/* Title and Artist */}
-          <div className="min-w-0 pr-2 overflow-hidden max-w-[130px] sm:max-w-none">
+          <div className="min-w-0 pr-2 overflow-hidden max-w-[130px] sm:max-w-none flex-1">
             <h4 
-              className={`text-sm font-semibold transition-colors ${
+              className={`text-sm font-semibold transition-colors font-sans ${
                 isCurrentActive 
-                  ? "text-[#1DB954]" 
-                  : "text-[#fafafa] hover:text-[#1DB954]"
+                  ? "text-[#E4C58E]" 
+                  : "text-[#fafafa] hover:text-white"
               } ${
                 track.title.length > 22 ? "mobile-marquee-title" : "truncate w-full"
               }`} 
@@ -273,7 +275,7 @@ export function TrackRow({
             </h4>
             <p 
               className={`text-xs mt-0.5 ${
-                isCurrentActive ? "text-emerald-400/80" : "text-[#71717a]"
+                isCurrentActive ? "text-[#E4C58E]/80" : "text-white/40"
               } ${
                 track.artist.length > 25 ? "mobile-marquee-artist" : "truncate w-full"
               }`} 
@@ -282,7 +284,7 @@ export function TrackRow({
               {track.artist}
             </p>
             {track.album && (
-              <p className="text-[10px] text-[#52525b] truncate mt-0.5">
+              <p className="text-[10px] text-white/30 truncate mt-0.5 font-mono">
                 Ref: {track.album}
               </p>
             )}
@@ -292,19 +294,19 @@ export function TrackRow({
         {/* Mobile-only compact status badge inline with the title block */}
         <div className="md:hidden flex-shrink-0">
           {track.status === "searching" || isSearchingRow ? (
-            <span className="flex items-center gap-1 text-[9px] font-bold bg-[#fafafa]/5 text-[#a1a1aa] px-2 py-0.5 rounded border border-[#27272a] animate-pulse">
-              <Loader2 className="w-2.5 h-2.5 animate-spin text-[#1DB954]" /> Search
+            <span className="flex items-center gap-1 text-[9px] font-bold bg-white/5 text-white/60 px-2 py-0.5 rounded border border-white/10 animate-pulse">
+              <Loader2 className="w-2.5 h-2.5 animate-spin text-white" /> Search
             </span>
           ) : track.status === "matched" ? (
-            <span className="flex items-center gap-1 text-[9px] font-bold bg-[#1DB954]/10 text-[#1DB954] px-2 py-0.5 rounded border border-[#1DB954]/20">
+            <span className="flex items-center gap-1 text-[9px] font-bold bg-[#E4C58E]/10 text-[#E4C58E] px-2 py-0.5 rounded border border-[#E4C58E]/20">
               <CheckCircle2 className="w-3 h-3" /> Matched
             </span>
           ) : track.status === "manual" ? (
-            <span className="flex items-center gap-1 text-[9px] font-bold bg-[#1DB954]/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">
+            <span className="flex items-center gap-1 text-[9px] font-bold bg-[#E4C58E]/10 text-[#E4C58E] px-2 py-0.5 rounded border border-[#E4C58E]/20">
               <Link2 className="w-3 h-3" /> Linked
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-[9px] font-bold bg-red-500/10 text-red-500 px-2 py-0.5 rounded border border-red-500/20">
+            <span className="flex items-center gap-1 text-[9px] font-bold bg-rose-500/10 text-rose-300 px-2 py-0.5 rounded border border-rose-500/20">
               <AlertCircle className="w-3 h-3" /> Missing
             </span>
           )}
@@ -314,19 +316,19 @@ export function TrackRow({
       {/* Desktop Match Status / Indicator Column */}
       <div className="hidden md:flex md:col-span-2 items-center gap-2">
         {track.status === "searching" || isSearchingRow ? (
-          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-[#fafafa]/5 text-[#a1a1aa] px-2.5 py-1 rounded uppercase tracking-tighter border border-[#27272a] animate-pulse">
-            <Loader2 className="w-3 h-3 animate-spin text-[#1DB954]" /> Searching
+          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-white/5 text-white/60 px-2.5 py-1 rounded border border-white/10 animate-pulse font-mono uppercase tracking-wider">
+            <Loader2 className="w-3 h-3 animate-spin text-white" /> Searching
           </span>
         ) : track.status === "matched" ? (
-          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-[#1DB954]/10 text-[#1DB954] px-2.5 py-0.5 rounded uppercase tracking-tighter border border-[#1DB954]/20">
+          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-[#E4C58E]/10 text-[#E4C58E] px-2.5 py-0.5 rounded border border-[#E4C58E]/20 font-mono uppercase tracking-wider">
             <CheckCircle2 className="w-3.5 h-3.5" /> Matched
           </span>
         ) : track.status === "manual" ? (
-          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-[#1DB954]/10 text-emerald-400 px-2.5 py-0.5 rounded uppercase tracking-tighter border border-emerald-500/20">
+          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-[#E4C58E]/10 text-[#E4C58E] px-2.5 py-0.5 rounded border border-[#E4C58E]/20 font-mono uppercase tracking-wider">
             <Link2 className="w-3.5 h-3.5" /> Linked
           </span>
         ) : (
-          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-red-500/10 text-red-500 px-2.5 py-0.5 rounded uppercase tracking-tighter border border-red-500/20">
+          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-rose-500/10 text-rose-300 px-2.5 py-0.5 rounded border border-rose-500/20 font-mono uppercase tracking-wider">
             <AlertCircle className="w-3.5 h-3.5" /> Not Found
           </span>
         )}
@@ -336,12 +338,12 @@ export function TrackRow({
       <div className="md:col-span-5 flex flex-col gap-1.5 justify-center">
         {hasYouTubeMatch ? (
           /* DISPLAY MATCHED YOUTUBE TRACK */
-          <div className="flex items-center justify-between gap-3 bg-[#18181b] p-2 rounded-xl border border-[#27272a] shadow-inner">
+          <div className="flex items-center justify-between gap-3 bg-white/5 p-2 rounded-xl border border-white/10 shadow-inner">
             <div className="flex items-center gap-3 min-w-0">
               {/* YouTube Video Mini Thumbnail */}
               <button 
                 onClick={() => onPreviewTrack && onPreviewTrack(track)}
-                className="w-14 h-9 rounded bg-black overflow-hidden flex-shrink-0 border border-[#27272a] flex items-center justify-center relative group/vid cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-emerald-500/35"
+                className="w-14 h-9 rounded bg-black overflow-hidden flex-shrink-0 border border-white/10 flex items-center justify-center relative group/vid cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-white/20"
                 title="Click to preview video"
               >
                 {track.thumbnailUrl ? (
@@ -365,7 +367,7 @@ export function TrackRow({
                   href={track.videoUrl!} 
                   target="_blank" 
                   rel="noreferrer"
-                  className="text-xs font-medium text-[#1DB954] hover:underline flex items-center gap-1 transition-colors w-full overflow-hidden"
+                  className="text-xs font-medium text-white hover:underline flex items-center gap-1 transition-colors w-full overflow-hidden"
                   title={track.videoTitle}
                 >
                   <span className={`block truncate min-w-0 flex-1 ${
@@ -373,9 +375,9 @@ export function TrackRow({
                   }`}>
                     {track.videoTitle || "YouTube Video"}
                   </span>
-                  <ExternalLink className="w-3 h-3 flex-shrink-0 text-[#71717a]" />
+                  <ExternalLink className="w-3 h-3 flex-shrink-0 text-white/40" />
                 </a>
-                <span className="text-[10px] font-mono text-[#52525b] block truncate mt-0.5">
+                <span className="text-[10px] font-mono text-white/30 block truncate mt-0.5">
                   ID: {track.videoId} {track.durationMs ? `• ${formatDuration(track.durationMs)}` : ''}
                 </span>
               </div>
@@ -389,13 +391,13 @@ export function TrackRow({
                 disabled={isLoadingSuggestions}
                 className={`p-1.5 transition-colors rounded cursor-pointer ${
                   showSuggestions && !isLoadingSuggestions
-                    ? "text-[#1DB954] bg-[#27272a]/80" 
-                    : "text-[#71717a] hover:text-[#1DB954] hover:bg-[#27272a]"
+                    ? "text-white bg-white/15" 
+                    : "text-white/40 hover:text-white hover:bg-white/5"
                 }`}
                 title="View Match Suggestions (Best 5)"
               >
                 {isLoadingSuggestions ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#1DB954]" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
                 ) : (
                   <Sparkles className="w-3.5 h-3.5" />
                 )}
@@ -406,8 +408,8 @@ export function TrackRow({
                 onClick={startEditingUrl}
                 className={`p-1.5 transition-colors rounded cursor-pointer ${
                   isEditingUrl 
-                    ? "text-[#1DB954] bg-[#27272a]/80" 
-                    : "text-[#71717a] hover:text-[#1DB954] hover:bg-[#27272a]"
+                    ? "text-white bg-white/15" 
+                    : "text-white/40 hover:text-white hover:bg-white/5"
                 }`}
                 title="Change YouTube Link / URL"
               >
@@ -417,7 +419,7 @@ export function TrackRow({
               {/* Re-search query selector if they want to try another term */}
               <button 
                 onClick={() => setIsExpandingSearch(!isExpandingSearch)}
-                className="p-1.5 text-[#71717a] hover:text-[#1DB954] transition-colors rounded hover:bg-[#27272a]"
+                className="p-1.5 text-white/40 hover:text-white transition-colors rounded hover:bg-white/5"
                 title="Search options"
               >
                 <Search className="w-3.5 h-3.5" />
@@ -425,14 +427,14 @@ export function TrackRow({
               <button 
                 onClick={() => onSearchAgain(track.id)}
                 disabled={isSearchingRow}
-                className="p-1.5 text-[#71717a] hover:text-blue-400 transition-colors rounded hover:bg-[#27272a] disabled:opacity-50"
+                className="p-1.5 text-white/40 hover:text-white transition-colors rounded hover:bg-white/5 disabled:opacity-50"
                 title="Retry auto-match search"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSearchingRow ? 'animate-spin' : ''}`} />
               </button>
               <button 
                 onClick={handleClearLink}
-                className="p-1.5 text-[#71717a] hover:text-red-500 transition-colors rounded hover:bg-[#27272a]"
+                className="p-1.5 text-white/40 hover:text-red-400 transition-colors rounded hover:bg-white/5"
                 title="Disconnect Match"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -450,20 +452,20 @@ export function TrackRow({
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleManualLink()}
-                  className="w-full bg-black/40 border border-red-500/30 focus:border-red-500 rounded-lg py-1.5 pl-3 pr-8 text-xs text-[#fafafa] placeholder:text-red-900/50 focus:outline-none transition-all shadow-inner"
+                  className="w-full h-9 bg-black/45 border border-white/10 focus:border-white/30 rounded-lg pl-3 pr-8 text-xs text-[#fafafa] placeholder-white/20 focus:outline-none transition-all shadow-inner"
                 />
-                <Youtube className="absolute right-2.5 top-2 w-3.5 h-3.5 text-red-500/50" />
+                <Youtube className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-white/30" />
               </div>
               <button 
                 onClick={handleManualLink}
-                className="bg-[#27272a] hover:bg-[#3f3f46] text-[#fafafa] border border-[#3f3f46] font-semibold text-xs px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-md flex items-center gap-1 flex-shrink-0"
+                className="bg-[#E4C58E] hover:bg-[#C5A059] text-black font-bold text-xs px-3 py-1.5 h-9 rounded-lg transition-all active:scale-95 shadow-md flex items-center gap-1 flex-shrink-0"
               >
                 <Link2 className="w-3.5 h-3.5" /> Connect
               </button>
             </div>
             
             {manualError && (
-              <p className="text-[10px] text-red-400 font-medium px-1 flex items-center gap-1">
+              <p className="text-[10px] text-red-300 font-medium px-1 flex items-center gap-1">
                 ⚠️ {manualError}
               </p>
             )}
@@ -473,14 +475,14 @@ export function TrackRow({
               <button
                 onClick={handleLoadSuggestions}
                 disabled={isLoadingSuggestions}
-                className="text-[#1DB954] hover:text-green-400 transition-colors flex items-center gap-1 cursor-pointer font-bold disabled:opacity-40"
+                className="text-white hover:text-white/80 transition-colors flex items-center gap-1 cursor-pointer font-bold disabled:opacity-40"
               >
-                <Sparkles className="w-3.5 h-3.5" /> View Suggestions (Best 5)
+                <Sparkles className="w-3.5 h-3.5 text-white" /> View Suggestions (Best 5)
               </button>
-              <span className="text-[#27272a]">|</span>
+              <span className="text-white/10">|</span>
               <button
                 onClick={() => onSearchAgain(track.id)}
-                className="text-[#71717a] hover:text-[#fafafa] transition-colors flex items-center gap-1 cursor-pointer"
+                className="text-white/40 hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
               >
                 <RefreshCw className="w-3 h-3" /> Retry Auto
               </button>
@@ -490,8 +492,8 @@ export function TrackRow({
 
         {/* DIRECT EDIT URL INLINE OPTION */}
         {isEditingUrl && (
-          <div className="mt-2 bg-[#0c0c0e] p-2.5 rounded-xl border border-emerald-500/15 text-xs flex flex-col gap-2 transition-all">
-            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">Change Match Video Link / ID:</span>
+          <div className="mt-2 bg-black/30 p-2.5 rounded-xl border border-white/10 text-xs flex flex-col gap-2 transition-all">
+            <span className="text-[10px] text-white/60 font-bold uppercase tracking-wider block">Change Match Video Link / ID:</span>
             <div className="flex gap-2">
               <input 
                 type="text"
@@ -499,24 +501,24 @@ export function TrackRow({
                 onChange={(e) => setEditInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSaveEditUrl()}
                 placeholder="Paste YouTube URL or Video ID..."
-                className="flex-grow bg-[#141416] border border-[#27272a] rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                className="flex-grow bg-[#141416] border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-white/30 transition-colors"
                 autoFocus
               />
               <button 
                 onClick={handleSaveEditUrl}
-                className="bg-[#1DB954] hover:bg-emerald-500 text-black font-extrabold px-3 py-1 rounded-lg text-xs transition-colors cursor-pointer active:scale-95 flex-shrink-0"
+                className="bg-white hover:bg-white/90 text-black font-extrabold px-3 py-1 rounded-lg text-xs transition-colors cursor-pointer active:scale-95 flex-shrink-0"
               >
                 Save
               </button>
               <button 
                 onClick={() => setIsEditingUrl(false)}
-                className="bg-[#27272a] hover:bg-[#3f3f46] text-white font-semibold px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+                className="bg-white/10 hover:bg-white/20 text-white font-semibold px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
               >
                 Cancel
               </button>
             </div>
             {editError && (
-              <p className="text-[10px] text-red-400 font-medium px-1">
+              <p className="text-[10px] text-red-300 font-medium px-1">
                 ⚠️ {editError}
               </p>
             )}
@@ -525,14 +527,14 @@ export function TrackRow({
 
         {/* EXPANSIVE MANUAL TWEAK SEARCH OPTION */}
         {isExpandingSearch && (
-          <div className="mt-2 bg-[#09090b] p-2 rounded-lg border border-[#27272a] text-xs flex flex-col gap-2">
-            <span className="text-[10px] text-[#71717a] font-semibold uppercase tracking-wider block">Custom Search Phrase:</span>
+          <div className="mt-2 bg-black/30 p-2 rounded-lg border border-white/10 text-xs flex flex-col gap-2">
+            <span className="text-[10px] text-white/40 font-semibold uppercase tracking-wider block">Custom Search Phrase:</span>
             <div className="flex gap-2">
               <input 
                 type="text"
                 value={localSearchQuery}
                 onChange={(e) => setLocalSearchQuery(e.target.value)}
-                className="flex-grow bg-[#18181b] border border-[#27272a] rounded px-2 py-1 text-xs text-white"
+                className="flex-grow bg-black/20 border border-white/10 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-white/20"
               />
               <button 
                 onClick={async () => {
@@ -561,7 +563,7 @@ export function TrackRow({
                     onUpdateTrack(track.id, { status: "not_found" });
                   }
                 }}
-                className="bg-[#fafafa] hover:bg-white text-[#09090b] font-bold px-2.5 py-1 rounded text-xs"
+                className="bg-white hover:bg-white/90 text-black font-bold px-2.5 py-1 rounded text-xs transition-colors active:scale-95"
               >
                 Find
               </button>
@@ -572,33 +574,33 @@ export function TrackRow({
 
       {/* Suggestions Drawer spanning full width */}
       {showSuggestions && (
-        <div className="col-span-1 md:col-span-12 mt-3 bg-[#0a0a0c] border border-emerald-500/15 rounded-xl p-4 transition-all">
-          <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#18181b]">
-            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[#1DB954]" /> YouTube Search Results (Top 5 Matches)
+        <div className="col-span-1 md:col-span-12 mt-3 vision-glass-interactive rounded-2xl p-4 transition-all">
+          <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/10">
+            <span className="text-[11px] font-bold text-white uppercase tracking-widest flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-white" /> YouTube Search Results (Top 5 Matches)
             </span>
             <button 
               onClick={() => setShowSuggestions(false)}
-              className="text-xs text-[#71717a] hover:text-[#fafafa] transition-colors cursor-pointer"
+              className="text-xs text-white/40 hover:text-white transition-colors cursor-pointer font-semibold"
             >
               Dismiss
             </button>
           </div>
 
           {isLoadingSuggestions ? (
-            <div className="py-6 flex items-center justify-center gap-2 text-xs text-[#a1a1aa] font-medium">
-              <Loader2 className="w-4 h-4 animate-spin text-[#1DB954]" /> Scanning YouTube indices...
+            <div className="py-6 flex items-center justify-center gap-2 text-xs text-white/50 font-medium">
+              <Loader2 className="w-4 h-4 animate-spin text-white" /> Scanning YouTube indices...
             </div>
           ) : fetchError ? (
-            <div className="text-xs text-red-400 py-2 font-medium">{fetchError}</div>
+            <div className="text-xs text-red-300 py-2 font-medium">{fetchError}</div>
           ) : suggestions.length === 0 ? (
-            <div className="text-xs text-[#71717a] py-2 font-medium">No results found on YouTube. Try a custom search query block.</div>
+            <div className="text-xs text-white/40 py-2 font-medium">No results found on YouTube. Try a custom search query block.</div>
           ) : (
             <div className="flex flex-col gap-2">
               {suggestions.map((sug) => (
                 <div 
                   key={sug.videoId}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 rounded-lg bg-[#141416]/50 border border-[#27272a] hover:border-[#1DB954]/20 hover:bg-[#181820] transition-all group/sug"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 rounded-xl bg-white/5 border border-white/10 hover:border-white/30 hover:bg-white/10 transition-all group/sug"
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <button 
@@ -618,7 +620,7 @@ export function TrackRow({
                         };
                         if (onPreviewTrack) onPreviewTrack(previewObj);
                       }}
-                      className="w-16 h-10 bg-black rounded overflow-hidden flex-shrink-0 relative border border-[#27272a] cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-500/35 text-left"
+                      className="w-16 h-10 bg-black rounded overflow-hidden flex-shrink-0 relative border border-white/10 cursor-pointer focus:outline-none focus:ring-1 focus:ring-white/20 text-left"
                       title="Click to preview video"
                     >
                       <img src={sug.thumbnailUrl} alt={sug.title} className="w-full h-full object-cover" />
@@ -628,16 +630,16 @@ export function TrackRow({
                     </button>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 min-w-0">
-                        <p className="text-xs font-semibold text-[#fafafa] truncate group-hover/sug:text-[#1DB954] transition-colors" title={sug.title}>
+                        <p className="text-xs font-semibold text-white truncate group-hover/sug:text-white transition-colors" title={sug.title}>
                           {sug.title}
                         </p>
                         {sug.isShort && (
-                          <span className="flex-shrink-0 text-[8px] font-extrabold px-1.5 py-0.5 rounded bg-zinc-800 text-amber-500 border border-amber-500/20 uppercase tracking-widest leading-none">
+                          <span className="flex-shrink-0 text-[8px] font-extrabold px-1.5 py-0.5 rounded bg-white/10 text-white/80 border border-white/10 uppercase tracking-widest leading-none">
                             Short / Clip
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-[#71717a] truncate mt-1">
+                      <p className="text-[10px] text-white/40 truncate mt-1">
                         By: {sug.artistName} {sug.duration ? `• Duration: ${sug.duration}` : ""}
                       </p>
                     </div>
@@ -655,7 +657,7 @@ export function TrackRow({
                       });
                       setShowSuggestions(false);
                     }}
-                    className="w-full sm:w-auto h-8 px-3 text-[11px] font-bold rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/20 hover:border-emerald-500 transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                    className="w-full sm:w-auto h-8 px-3 text-[11px] font-extrabold rounded-lg bg-[#E4C58E] hover:bg-[#C5A059] text-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-md"
                   >
                     Connect Track
                   </button>

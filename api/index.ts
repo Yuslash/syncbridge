@@ -300,6 +300,94 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.post("/api/youtube-details", async (req, res): Promise<any> => {
+  const { url, videoId } = req.body || {};
+  try {
+    let targetUrl = url;
+    if (videoId && !targetUrl) {
+      targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    }
+    if (!targetUrl) {
+      return res.status(400).json({ error: "URL or videoId is required" });
+    }
+    const info = await YouTube.getVideo(targetUrl);
+    return res.json({
+      videoId: info.id,
+      title: info.title,
+      artist: info.channel?.name || "YouTube Video",
+      durationMs: info.duration || 180000,
+      artworkUrl: info.thumbnail?.url || `https://img.youtube.com/vi/${info.id}/mqdefault.jpg`
+    });
+  } catch (err: any) {
+    console.error("[YouTube Details Error]", err);
+    const parsedId = videoId || (url ? url.match(/(?:v=|\/)([a-zA-Z0-9_\-]{11})/)?.[1] : null);
+    if (parsedId) {
+      return res.json({
+        videoId: parsedId,
+        title: "YouTube Video",
+        artist: "YouTube Channel",
+        durationMs: 180000,
+        artworkUrl: `https://img.youtube.com/vi/${parsedId}/mqdefault.jpg`
+      });
+    }
+    return res.status(500).json({ error: err.message || "Failed to fetch YouTube details" });
+  }
+});
+
+app.post("/api/spotify-track-details", async (req, res): Promise<any> => {
+  try {
+    const { url } = req.body;
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "Spotify URL is required" });
+    }
+    const trackIdMatch = url.match(/track\/([a-zA-Z0-9]{22})/);
+    if (!trackIdMatch) {
+      return res.status(400).json({ error: "Invalid Spotify track link." });
+    }
+    const trackId = trackIdMatch[1];
+    const targetUrl = `https://open.spotify.com/embed/track/${trackId}`;
+    
+    const fetchResponse = await fetch(targetUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9"
+      }
+    });
+
+    if (!fetchResponse.ok) {
+      throw new Error(`Failed to fetch Spotify track. Status: ${fetchResponse.status}`);
+    }
+
+    const html = await fetchResponse.text();
+    const programResult = tryRegexAndJsonParse(html);
+    if (programResult && programResult.tracks && programResult.tracks.length > 0) {
+      const track = programResult.tracks[0];
+      return res.json({ track });
+    }
+    
+    const titleMatch = html.match(/<title>([\s\S]*?)<\/title>/i);
+    if (titleMatch) {
+      const pageTitle = titleMatch[1].replace(" - song and lyrics by Spotify", "").trim();
+      const parts = pageTitle.split(" - song by ");
+      if (parts.length >= 2) {
+        return res.json({
+          track: {
+            title: parts[0].trim(),
+            artist: parts[1].trim(),
+            artworkUrl: "",
+            durationMs: 180000
+          }
+        });
+      }
+    }
+    
+    return res.status(404).json({ error: "Could not parse track details." });
+  } catch (err: any) {
+    console.error("[Spotify Track Parse Error]", err);
+    return res.status(500).json({ error: err.message || "Failed to parse Spotify track" });
+  }
+});
+
 /**
  * Endpoint to parse Spotify playlist details.
  * Uses a robust cleaning mechanism + Gemini Structured JSON output to guarantee a perfect parse.

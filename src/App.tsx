@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Header } from "./components/Header";
 import { TrackRow } from "./components/TrackRow";
+import { QuickPlayPanel } from "./components/QuickPlayPanel";
+import { QueuePanel } from "./components/QueuePanel";
 import { SpotifyTrack, MatchedTrack, ConvertedPlaylist } from "./types";
 import { 
   Music, 
@@ -84,6 +86,16 @@ function extractPlaylistId(url: string): string {
 }
 
 export default function App() {
+  const [logs, setLogs] = useState<string[]>([
+    "[System Init] SyncBridge Glass Engine v4.2.0 loaded",
+    "[Auth] Local Secure Vault handshaked"
+  ]);
+
+  const addLog = (msg: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [`[${timestamp}] ${msg}`, ...prev].slice(0, 100));
+  };
+
   const [spotifyUrl, setSpotifyUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState<"none" | "fetching" | "extracting" | "searching">("none");
@@ -127,23 +139,43 @@ export default function App() {
   const [isInsideIframe, setIsInsideIframe] = useState(false);
   const playerIframeRef = React.useRef<HTMLIFrameElement | null>(null);
 
+  // NEW Quick Play & Queue States
+  const [activeTab, setActiveTab] = useState<'converter' | 'player'>('converter');
+  const [homeTab, setHomeTab] = useState<'quick' | 'playlist'>('quick'); 
+  const [queue, setQueue] = useState<MatchedTrack[]>([]);
+  const [activeSingleTrack, setActiveSingleTrack] = useState<MatchedTrack | null>(null);
+  const [isLoadingSong, setIsLoadingSong] = useState(false);
+  const [showChangeSongModal, setShowChangeSongModal] = useState(false);
+  const [changeSongSuggestions, setChangeSongSuggestions] = useState<any[]>([]);
+  const [searchingChangeSuggestions, setSearchingChangeSuggestions] = useState(false);
+  const [changeSearchQuery, setChangeSearchQuery] = useState("");
+
   const playableTracks = React.useMemo(() => {
     return tracks.filter(t => t.videoId && t.status !== "not_found");
   }, [tracks]);
 
   const currentPlayingTrack = React.useMemo(() => {
+    if (activePlayingTrackId && activeSingleTrack && activeSingleTrack.id === activePlayingTrackId) {
+      return activeSingleTrack;
+    }
     return tracks.find(t => t.id === activePlayingTrackId) || null;
-  }, [tracks, activePlayingTrackId]);
+  }, [tracks, activePlayingTrackId, activeSingleTrack]);
 
-  const handlePlayTrack = (track: MatchedTrack) => {
-    if (activePlayingTrackId === track.id) {
-      setIsPlaying(!isPlaying);
-    } else {
-      setActivePlayingTrackId(track.id);
-      setIsPlaying(true);
-      setCurrentTimeSecs(0);
-      const estSecs = track.durationMs ? Math.floor(track.durationMs / 1000) : 180;
-      setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
+  const handlePlayTrack = (track: MatchedTrack, fromPlaylistTracks?: MatchedTrack[]) => {
+    setActiveSingleTrack(track);
+    setActivePlayingTrackId(track.id);
+    setIsPlaying(true);
+    setCurrentTimeSecs(0);
+    const estSecs = track.durationMs ? Math.floor(track.durationMs / 1000) : 180;
+    setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
+    setActiveTab('player'); // Automatically switch to the Player section!
+
+    if (fromPlaylistTracks) {
+      const idx = fromPlaylistTracks.findIndex(t => t.id === track.id);
+      if (idx !== -1) {
+        const upcoming = fromPlaylistTracks.slice(idx + 1);
+        setQueue(upcoming);
+      }
     }
   };
 
@@ -151,15 +183,33 @@ export default function App() {
     if (playableTracks.length === 0) return;
     const firstTrack = playableTracks[0];
     if (firstTrack) {
-      setActivePlayingTrackId(firstTrack.id);
-      setIsPlaying(true);
-      setCurrentTimeSecs(0);
-      const estSecs = firstTrack.durationMs ? Math.floor(firstTrack.durationMs / 1000) : 180;
-      setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
+      handlePlayTrack(firstTrack, playableTracks);
     }
   };
 
+  const handlePlayNextFromQueue = () => {
+    if (queue.length > 0) {
+      const nextTrack = queue[0];
+      setQueue(prev => prev.slice(1));
+      
+      setActiveSingleTrack(nextTrack);
+      setActivePlayingTrackId(nextTrack.id);
+      setIsPlaying(true);
+      setCurrentTimeSecs(0);
+      const estSecs = nextTrack.durationMs ? Math.floor(nextTrack.durationMs / 1000) : 180;
+      setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
+      return true;
+    }
+    return false;
+  };
+
   const handleSkipNext = () => {
+    // 1. Try playing from custom Queue first!
+    if (handlePlayNextFromQueue()) {
+      return;
+    }
+
+    // 2. Fallback to playing playlist tracks if queue is empty
     if (playableTracks.length === 0) return;
     let currentIndex = playableTracks.findIndex(t => t.id === activePlayingTrackId);
     let nextIndex = 0;
@@ -175,6 +225,7 @@ export default function App() {
     }
     const nextTrack = playableTracks[nextIndex];
     if (nextTrack) {
+      setActiveSingleTrack(nextTrack);
       setActivePlayingTrackId(nextTrack.id);
       setIsPlaying(true);
       setCurrentTimeSecs(0);
@@ -197,12 +248,66 @@ export default function App() {
     }
     const prevTrack = playableTracks[prevIndex];
     if (prevTrack) {
+      setActiveSingleTrack(prevTrack);
       setActivePlayingTrackId(prevTrack.id);
       setIsPlaying(true);
       setCurrentTimeSecs(0);
       const estSecs = prevTrack.durationMs ? Math.floor(prevTrack.durationMs / 1000) : 180;
       setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
     }
+  };
+
+  const fetchChangeSuggestions = async (query: string) => {
+    setSearchingChangeSuggestions(true);
+    try {
+      const response = await fetch("/api/youtube-suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: query, artist: "" }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setChangeSongSuggestions(data.suggestions || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSearchingChangeSuggestions(false);
+    }
+  };
+
+  const handleCorrectSongMatch = (suggestion: any) => {
+    if (!currentPlayingTrack) return;
+    
+    const updatedTrack: MatchedTrack = {
+      ...currentPlayingTrack,
+      videoId: suggestion.videoId,
+      videoTitle: suggestion.title,
+      videoUrl: suggestion.videoUrl,
+      thumbnailUrl: suggestion.thumbnailUrl,
+      artworkUrl: suggestion.thumbnailUrl,
+      durationMs: suggestion.durationMs,
+      status: "matched"
+    };
+    
+    setActiveSingleTrack(updatedTrack);
+    
+    // Update track inside the main tracks array if it came from there
+    setTracks(prev => prev.map(t => t.id === currentPlayingTrack.id ? updatedTrack : t));
+    
+    // Instantly restart playback with new details
+    setCurrentTimeSecs(0);
+    const estSecs = suggestion.durationMs ? Math.floor(suggestion.durationMs / 1000) : 180;
+    setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
+    setIsPlaying(true);
+    setShowChangeSongModal(false);
+    
+    // Save current updated playlist to IndexedDB/Local storage
+    setTimeout(() => {
+      if (playlistMeta) {
+        saveCurrentState(playlistMeta, tracks.map(t => t.id === currentPlayingTrack.id ? updatedTrack : t), spotifyUrl);
+      }
+    }, 500);
   };
 
   const handleTimelineChange = (secs: number) => {
@@ -427,14 +532,21 @@ export default function App() {
 
   // Subscribe to Auth State Changes
   useEffect(() => {
+    addLog("[System] Initializing digital curation loom services...");
     if (isFirebaseConfigured && auth) {
       const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
         setUser(firebaseUser);
         loadPlaylistsAndSync(firebaseUser);
+        if (firebaseUser) {
+          addLog(`[Auth] Secured session handshake with ${firebaseUser.displayName || firebaseUser.email}`);
+        } else {
+          addLog("[Auth] Offline local vault sandbox mode active");
+        }
       });
       return () => unsubscribe();
     } else {
       loadPlaylistsAndSync(null);
+      addLog("[Auth] Cloud auth bypass; local index active");
     }
   }, []);
 
@@ -977,8 +1089,272 @@ export default function App() {
       />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 md:px-6 pt-8">
+        {/* If we have an active playing track or loaded playlist, show a global tab header to switch between workspace and active player session */}
+        {(playlistMeta || currentPlayingTrack) && (
+          <div className="flex items-center justify-between gap-4 mb-6 bg-white/5 p-1.5 rounded-2xl border border-white/10 max-w-md mx-auto sm:mx-0">
+            <button
+              onClick={() => setActiveTab('converter')}
+              className={`flex-1 text-center py-2 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                activeTab === 'converter'
+                  ? "bg-white text-black shadow-md"
+                  : "text-white/60 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              {playlistMeta ? "Playlist Workspace" : "Home / Importer"}
+            </button>
+            <button
+              onClick={() => setActiveTab('player')}
+              className={`flex-1 text-center py-2 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === 'player'
+                  ? "bg-white text-black shadow-md"
+                  : "text-white/60 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              {currentPlayingTrack && <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
+              Player & Queue
+            </button>
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
-          {!playlistMeta && !isLoading ? (
+          {activeTab === 'player' ? (
+            <motion.div
+              key="player-session"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              className="w-full"
+            >
+              {/* THE ACTIVE SESSION PLAYER & QUEUE DASHBOARD */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 py-2">
+                {/* Left: Active Player Details */}
+                <div className="lg:col-span-5 flex flex-col gap-6">
+                  {currentPlayingTrack ? (
+                    <div className="vision-glass rounded-3xl p-6 md:p-8 relative overflow-hidden flex flex-col items-center text-center gap-6">
+                      <div className="absolute right-0 top-0 w-64 h-64 bg-white/5 rounded-full blur-3xl pointer-events-none" />
+                      
+                      {/* Album / Vinyl Art revolving */}
+                      <div className="relative w-48 h-48 md:w-56 md:h-56 rounded-full bg-black border-4 border-white/10 shadow-2xl overflow-hidden flex items-center justify-center group flex-shrink-0">
+                        {currentPlayingTrack.artworkUrl ? (
+                          <img
+                            src={currentPlayingTrack.artworkUrl}
+                            alt={currentPlayingTrack.title}
+                            className={`w-full h-full object-cover transition-transform select-none ${
+                              isPlaying ? "spin-slow" : "spin-slow spin-paused"
+                            }`}
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <Music className="w-16 h-16 text-white" />
+                        )}
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,rgba(255,255,255,0.06)_40%,transparent_50%,rgba(255,255,255,0.08)_60%,transparent_70%)] pointer-events-none rounded-full" />
+                        <div className="absolute w-12 h-12 bg-black border-4 border-white/10 rounded-full flex items-center justify-center z-10">
+                          <div className="w-3 h-3 bg-white rounded-full" />
+                        </div>
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex flex-col gap-1.5 w-full min-w-0">
+                        <h3 className="text-lg md:text-xl font-bold text-white truncate" title={currentPlayingTrack.title}>
+                          {currentPlayingTrack.title}
+                        </h3>
+                        <p className="text-xs md:text-sm text-white/60 truncate" title={currentPlayingTrack.artist}>
+                          {currentPlayingTrack.artist}
+                        </p>
+                        {currentPlayingTrack.album && (
+                          <p className="text-[10px] text-white/40 font-medium truncate uppercase tracking-wider font-mono">
+                            {currentPlayingTrack.album}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Badges / Change Match button */}
+                      <div className="flex items-center gap-3">
+                        <span className="inline-flex items-center gap-1.5 text-[9px] text-white font-bold bg-white/10 border border-white/20 px-2.5 py-1 rounded-xl uppercase tracking-wider">
+                          <Youtube className="w-3.5 h-3.5 text-red-500 fill-red-500" /> YouTube Match
+                        </span>
+
+                        <button
+                          onClick={() => {
+                            setChangeSearchQuery(`${currentPlayingTrack.title} ${currentPlayingTrack.artist}`);
+                            setShowChangeSongModal(true);
+                            fetchChangeSuggestions(`${currentPlayingTrack.title} ${currentPlayingTrack.artist}`);
+                          }}
+                          className="inline-flex items-center gap-1.5 text-[9px] text-white/80 hover:text-white font-bold bg-white/5 hover:bg-white/10 border border-white/10 px-2.5 py-1 rounded-xl uppercase tracking-wider cursor-pointer transition-all"
+                          title="Correct or change YouTube video match"
+                        >
+                          <RefreshCw className="w-3 h-3 animate-spin-slow" /> Change Match
+                        </button>
+                      </div>
+
+                      {/* Timeline sliders replicated */}
+                      <div className="w-full flex flex-col gap-2 mt-2">
+                        {(() => {
+                          const displayTimeSecs = Math.min(currentTimeSecs, trackDurationSecs);
+                          return (
+                            <>
+                              <div className="flex-1 relative group py-1">
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max={trackDurationSecs}
+                                  value={displayTimeSecs}
+                                  onChange={(e) => handleTimelineChange(parseInt(e.target.value, 10))}
+                                  className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white outline-none hover:bg-white/20 transition-all"
+                                  style={{
+                                    background: `linear-gradient(to right, #ffffff ${
+                                      (displayTimeSecs / trackDurationSecs) * 100
+                                    }%, rgba(255,255,255,0.1) ${(displayTimeSecs / trackDurationSecs) * 100}%)`,
+                                  }}
+                                />
+                              </div>
+                              <div className="flex justify-between text-[10px] font-mono text-white/40">
+                                <span>
+                                  {Math.floor(displayTimeSecs / 60)}:
+                                  {String(displayTimeSecs % 60).padStart(2, "0")}
+                                </span>
+                                <span>
+                                  {Math.floor(trackDurationSecs / 60)}:
+                                  {String(trackDurationSecs % 60).padStart(2, "0")}
+                                </span>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Mid playback control orb buttons */}
+                      <div className="flex items-center gap-5 mt-1">
+                        <button
+                          onClick={() => setIsShuffled(!isShuffled)}
+                          className={`p-2 rounded-full transition-colors relative cursor-pointer ${
+                            isShuffled ? "text-white bg-white/10" : "text-white/40 hover:text-white"
+                          }`}
+                          title="Shuffle"
+                        >
+                          <Shuffle className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          onClick={handleSkipPrev}
+                          className="p-2 text-white/60 hover:text-white transition-colors cursor-pointer"
+                          title="Previous"
+                        >
+                          <SkipBack className="w-5 h-5 fill-current" />
+                        </button>
+
+                        <button
+                          onClick={() => setIsPlaying(!isPlaying)}
+                          className="w-14 h-14 rounded-full bg-white text-black flex items-center justify-center shadow-lg cursor-pointer hover:scale-105 active:scale-95 transition-all"
+                        >
+                          {isPlaying ? (
+                            <Pause className="w-5 h-5 fill-current text-black" />
+                          ) : (
+                            <Play className="w-5 h-5 fill-current ml-1 text-black" />
+                          )}
+                        </button>
+
+                        <button
+                          onClick={handleSkipNext}
+                          className="p-2 text-white/60 hover:text-white transition-colors cursor-pointer"
+                          title="Next"
+                        >
+                          <SkipForward className="w-5 h-5 fill-current" />
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (repeatMode === 'all') setRepeatMode('one');
+                            else if (repeatMode === 'one') setRepeatMode('none');
+                            else setRepeatMode('all');
+                          }}
+                          className={`p-2 rounded-full transition-colors relative cursor-pointer ${
+                            repeatMode !== 'none' ? "text-white bg-white/10" : "text-white/40 hover:text-white"
+                          }`}
+                          title="Repeat"
+                        >
+                          <Repeat className="w-4 h-4" />
+                          {repeatMode === 'one' && (
+                            <span className="absolute -top-0.5 -right-0.5 text-[7px] font-bold bg-white text-black rounded-full w-3.5 h-3.5 flex items-center justify-center">1</span>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Live video frame toggle indicator */}
+                      <div className="w-full border-t border-white/10 pt-4 flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-white/40">Live Video Preview</span>
+                          <button
+                            onClick={() => setShowPlayerVideoPreview(!showPlayerVideoPreview)}
+                            className={`text-xs font-semibold px-3 py-1 rounded-lg border transition-all cursor-pointer ${
+                              showPlayerVideoPreview 
+                                ? "bg-white/10 text-white border-white/20" 
+                                : "bg-transparent text-white/40 border-white/10 hover:text-white"
+                            }`}
+                          >
+                            {showPlayerVideoPreview ? "Hide Preview" : "Show Preview"}
+                          </button>
+                        </div>
+
+                        <AnimatePresence>
+                          {showPlayerVideoPreview && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="overflow-hidden rounded-2xl border border-white/10 shadow-inner bg-black/40"
+                            >
+                              <div className="aspect-video w-full relative">
+                                <iframe
+                                  ref={playerIframeRef}
+                                  src={`https://www.youtube.com/embed/${currentPlayingTrack.videoId}?enablejsapi=1&controls=1&autoplay=${isPlaying ? 1 : 0}&volume=${playbackVolume}&mute=${isMuted ? 1 : 0}&origin=${window.location.origin}`}
+                                  title="Live Audio Playback Video Feed"
+                                  className="w-full h-full border-0 absolute inset-0"
+                                  allow="autoplay; encrypted-media; picture-in-picture"
+                                />
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="vision-glass rounded-3xl p-12 shadow-2xl text-center flex flex-col items-center justify-center gap-4">
+                      <div className="p-4 bg-white/10 border border-white/10 rounded-full text-white">
+                        <Music className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">No song playing</h4>
+                        <p className="text-xs text-white/40 mt-1 max-w-xs mx-auto">
+                          Playback is idle. Search a song or load a saved playlist to kickstart your listening session!
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick Play panel */}
+                  <QuickPlayPanel 
+                    onPlayTrack={(track) => handlePlayTrack(track)} 
+                    isLoadingSong={isLoadingSong}
+                    setIsLoadingSong={setIsLoadingSong}
+                  />
+                </div>
+
+                {/* Right: Interactive Session Queue */}
+                <div className="lg:col-span-7 flex flex-col">
+                  <QueuePanel
+                    queue={queue}
+                    setQueue={setQueue}
+                    onPlayNextImmediate={(track) => {
+                      setQueue(prev => prev.filter(t => t.id !== track.id));
+                      handlePlayTrack(track);
+                    }}
+                    currentPlayingTrack={currentPlayingTrack}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          ) : !playlistMeta && !isLoading ? (
             /* INTRO HERO / CARD IMPORTER VIEW */
             <motion.div 
               key="intro"
@@ -988,23 +1364,56 @@ export default function App() {
               className="max-w-3xl mx-auto flex flex-col gap-8 py-4"
             >
               <div className="text-center flex flex-col gap-3">
-                <span className="text-[11px] font-bold uppercase tracking-[0.2rem] text-[#1DB954] bg-[#1DB954]/10 px-3.5 py-1 rounded border border-[#1DB954]/25 self-center">
+                <span className="text-[11px] font-bold uppercase tracking-[0.2rem] text-white bg-white/10 px-3.5 py-1 rounded border border-white/15 self-center">
                   ✨ Instant Conversion Engine
                 </span>
                 <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-white">
                   No More Manual Re-ordering
                 </h2>
-                <p className="text-base text-[#a1a1aa] max-w-lg mx-auto">
+                <p className="text-base text-white/60 max-w-lg mx-auto">
                   Paste any public Spotify playlist. We'll map each song to its YouTube matches in the exact original sequence. Watch instantly in a single aggregated queue.
                 </p>
               </div>
 
-              {/* Paste Entry Card */}
-              <div className="bg-[#111113] border border-[#27272a] rounded-2xl p-6 md:p-8 shadow-2xl relative overflow-hidden">
-                <div className="absolute right-0 top-0 w-80 h-80 bg-[#1DB954]/5 rounded-full blur-3xl pointer-events-none" />
-                <div className="absolute left-0 bottom-0 w-80 h-80 bg-red-500/5 rounded-full blur-3xl pointer-events-none" />
+              {/* Home Tab Switcher */}
+              <div className="flex rounded-full bg-black/40 p-1 border border-white/10 max-w-sm mx-auto w-full mb-4">
+                <button
+                  onClick={() => setHomeTab('quick')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
+                    homeTab === 'quick'
+                      ? "bg-[#10B981] text-black font-extrabold shadow-[0_4px_20px_rgba(16,185,129,0.3)] scale-[1.02]"
+                      : "text-white/60 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <Zap className={`w-3.5 h-3.5 ${homeTab === 'quick' ? 'fill-black text-black' : 'text-white/60'}`} />
+                  <span>Quick Play</span>
+                </button>
+                <button
+                  onClick={() => setHomeTab('playlist')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
+                    homeTab === 'playlist'
+                      ? "bg-[#10B981] text-black font-extrabold shadow-[0_4px_20px_rgba(16,185,129,0.3)] scale-[1.02]"
+                      : "text-white/60 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <Music className={`w-3.5 h-3.5 ${homeTab === 'playlist' ? 'fill-black text-black' : 'text-white/60'}`} />
+                  <span>Convert Playlist</span>
+                </button>
+              </div>
 
-                <label className="text-xs font-bold uppercase tracking-[0.2em] text-[#52525b] block mb-3">
+              {homeTab === 'quick' ? (
+                <QuickPlayPanel 
+                  onPlayTrack={(track) => handlePlayTrack(track)} 
+                  isLoadingSong={isLoadingSong}
+                  setIsLoadingSong={setIsLoadingSong}
+                />
+              ) : (
+                /* Paste Entry Card */
+                <div className="vision-glass rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden">
+                <div className="absolute right-0 top-0 w-80 h-80 bg-white/5 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute left-0 bottom-0 w-80 h-80 bg-white/5 rounded-full blur-3xl pointer-events-none" />
+
+                <label className="text-xs font-bold uppercase tracking-[0.2em] text-white/40 block mb-3 font-mono">
                   Paste Spotify Playlist Link
                 </label>
 
@@ -1013,7 +1422,7 @@ export default function App() {
                     <div className="relative flex-1">
                       <input 
                         type="text"
-                        className="w-full h-14 bg-[#18181b] border border-[#27272a] rounded-xl px-5 pl-12 text-sm text-[#fafafa] placeholder-[#52525b] font-medium focus:outline-none focus:border-[#1DB954] transition-colors shadow-inner"
+                        className="w-full h-14 vision-glass-input rounded-xl px-5 pl-12 text-sm text-[#fafafa] placeholder-white/30 font-medium focus:outline-none transition-all shadow-inner"
                         placeholder="e.g. https://open.spotify.com/playlist/37i9dQZF1DXcBWIGsy3985"
                         value={spotifyUrl}
                         onChange={(e) => {
@@ -1022,15 +1431,15 @@ export default function App() {
                         }}
                         onKeyDown={(e) => e.key === "Enter" && startConversion(spotifyUrl)}
                       />
-                      <Music className="absolute left-4 top-[17px] w-5 h-5 text-[#1DB954]" />
-                      <div className="absolute right-4 top-4 text-xs font-mono text-[#52525b] uppercase tracking-widest hidden md:block">Spotify URL</div>
+                      <Music className="absolute left-4 top-[17px] w-5 h-5 text-white" />
+                      <div className="absolute right-4 top-4 text-xs font-mono text-white/30 uppercase tracking-widest hidden md:block">Spotify URL</div>
                     </div>
 
                     <button 
                       onClick={() => startConversion(spotifyUrl)}
-                      className="h-14 px-6 md:px-8 bg-[#fafafa] text-[#09090b] font-bold rounded-xl hover:bg-white active:scale-95 transition-all shadow-[0_0_20px_rgba(255,255,255,0.05)] flex items-center justify-center gap-2 flex-shrink-0 cursor-pointer"
+                      className="h-14 px-6 md:px-8 bg-[#10B981] text-black font-extrabold rounded-xl hover:bg-[#059669] active:scale-95 transition-all flex items-center justify-center gap-2 flex-shrink-0 cursor-pointer shadow-[0_4px_20px_rgba(16,185,129,0.25)]"
                     >
-                      Convert Playlist <ChevronRight className="w-4 h-4" />
+                      Convert Playlist <ChevronRight className="w-4 h-4 text-black stroke-[3px]" />
                     </button>
                   </div>
 
@@ -1038,33 +1447,33 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
                     <button 
                       onClick={() => setConversionMode("fast")}
-                      className={`relative flex items-start gap-4 p-4 rounded-xl border text-left transition-all ${conversionMode === "fast" ? "border-[#1DB954] bg-[#1DB954]/5 shadow-[0_0_15px_rgba(29,185,84,0.1)]" : "border-[#27272a] bg-[#121214] hover:bg-[#18181b]"} cursor-pointer group`}
+                      className={`relative flex items-start gap-4 p-4 rounded-2xl border text-left transition-all ${conversionMode === "fast" ? "border-[#10B981] bg-[#10B981]/10 shadow-[0_0_15px_rgba(16,185,129,0.15)]" : "border-white/5 bg-white/5 hover:bg-white/10"} cursor-pointer group`}
                     >
-                      <div className={`p-2 rounded-lg transition-colors ${conversionMode === "fast" ? "bg-[#1DB954]/20 text-[#1DB954]" : "bg-[#18181b] text-gray-400 group-hover:text-gray-300 border border-[#27272a]"}`}>
+                      <div className={`p-2 rounded-lg transition-colors ${conversionMode === "fast" ? "bg-[#10B981]/20 text-[#10B981]" : "bg-white/5 text-white/60 group-hover:text-white border border-white/10"}`}>
                         <Zap className="w-5 h-5" />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-1">
-                          <h4 className={`text-sm font-bold ${conversionMode === "fast" ? "text-white" : "text-gray-300"}`}>Fast Match</h4>
-                          {conversionMode === "fast" && <CheckCircle2 className="w-4 h-4 text-[#1DB954]" />}
+                          <h4 className={`text-sm font-bold ${conversionMode === "fast" ? "text-[#10B981]" : "text-white/60"}`}>Fast Match</h4>
+                          {conversionMode === "fast" && <CheckCircle2 className="w-4 h-4 text-[#10B981]" />}
                         </div>
-                        <p className="text-[11px] text-gray-500 font-medium">Prioritizes speed. Automatically matches the first relevant YouTube search result.</p>
+                        <p className="text-[11px] text-white/40 font-medium">Prioritizes speed. Automatically matches the first relevant YouTube search result.</p>
                       </div>
                     </button>
 
                     <button 
                       onClick={() => setConversionMode("research")}
-                      className={`relative flex items-start gap-4 p-4 rounded-xl border text-left transition-all ${conversionMode === "research" ? "border-indigo-500 bg-indigo-500/5 shadow-[0_0_15px_rgba(99,102,241,0.1)]" : "border-[#27272a] bg-[#121214] hover:bg-[#18181b]"} cursor-pointer group`}
+                      className={`relative flex items-start gap-4 p-4 rounded-2xl border text-left transition-all ${conversionMode === "research" ? "border-[#10B981] bg-[#10B981]/10 shadow-[0_0_15px_rgba(16,185,129,0.15)]" : "border-white/5 bg-white/5 hover:bg-white/10"} cursor-pointer group`}
                     >
-                      <div className={`p-2 rounded-lg transition-colors ${conversionMode === "research" ? "bg-indigo-500/20 text-indigo-400" : "bg-[#18181b] text-gray-400 group-hover:text-gray-300 border border-[#27272a]"}`}>
+                      <div className={`p-2 rounded-lg transition-colors ${conversionMode === "research" ? "bg-[#10B981]/20 text-[#10B981]" : "bg-white/5 text-white/60 group-hover:text-white border border-white/10"}`}>
                         <Lightbulb className="w-5 h-5" />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-1">
-                          <h4 className={`text-sm font-bold ${conversionMode === "research" ? "text-white" : "text-gray-300"}`}>Deep Research API</h4>
-                          {conversionMode === "research" && <CheckCircle2 className="w-4 h-4 text-indigo-400" />}
+                          <h4 className={`text-sm font-bold ${conversionMode === "research" ? "text-[#10B981]" : "text-white/60"}`}>Deep Research API</h4>
+                          {conversionMode === "research" && <CheckCircle2 className="w-4 h-4 text-[#10B981]" />}
                         </div>
-                        <p className="text-[11px] text-gray-500 font-medium">Uses AI via OpenRouter to intelligently analyze candidate videos for the official best match.</p>
+                        <p className="text-[11px] text-white/40 font-medium">Uses AI via OpenRouter to intelligently analyze candidate videos for the official best match.</p>
                       </div>
                     </button>
                   </div>
@@ -1074,7 +1483,7 @@ export default function App() {
                   <motion.div 
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mt-4 p-5 bg-[#1c0f13] border border-red-900/40 rounded-2xl text-xs text-red-300 flex flex-col gap-3.5 relative overflow-hidden shadow-2xl"
+                    className="mt-4 p-5 bg-red-500/5 border border-red-500/10 rounded-2xl text-xs text-red-300 flex flex-col gap-3.5 relative overflow-hidden shadow-2xl"
                   >
                     {/* Visual warning background glow */}
                     <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 blur-3xl rounded-full" />
@@ -1092,7 +1501,7 @@ export default function App() {
                     <div className="h-[1px] bg-red-950/40 w-full" />
 
                     <div className="flex flex-col gap-2.5 text-left">
-                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#1DB954]">Recommended Actions:</span>
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-white/60 font-mono">Recommended Actions:</span>
                       <ol className="list-decimal pl-4 space-y-2 text-gray-400 leading-relaxed font-medium">
                         <li>
                           Open the Google AI Studio <span className="text-white font-semibold">Settings &gt; Secrets</span> panel (located in your main workspace sidebar/context).
@@ -1119,11 +1528,11 @@ export default function App() {
                     </div>
                   </motion.div>
                 ) : null}
-              </div>
+              </div>)}
 
               {/* Sample playlists */}
               <div className="flex flex-col gap-3">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest text-center md:text-left">
+                <span className="text-xs font-semibold text-white/40 uppercase tracking-widest text-center md:text-left font-mono">
                   Or test with a popular playlist:
                 </span>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1135,22 +1544,22 @@ export default function App() {
                         setErrorMsg("");
                         startConversion(sample.url);
                       }}
-                      className="bg-[#0c0c0e] hover:bg-[#18181b] border border-[#18181b] hover:border-[#27272a] rounded-2xl p-5 text-left transition-all group flex flex-col justify-between cursor-pointer"
+                      className="bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-2xl p-5 text-left transition-all group flex flex-col justify-between cursor-pointer"
                     >
                       <div>
                         <div className="flex items-center gap-2 mb-1.5">
-                          <span className="p-1 bg-[#1DB954]/15 rounded-md text-[#1DB954] flex items-center justify-center">
+                          <span className="p-1 bg-white/10 rounded-md text-white flex items-center justify-center border border-white/10">
                             <Music className="w-3.5 h-3.5" />
                           </span>
-                          <span className="text-sm font-bold text-white group-hover:text-[#1DB954] transition-colors">
+                          <span className="text-sm font-bold text-white group-hover:text-white/80 transition-colors">
                             {sample.name}
                           </span>
                         </div>
-                        <p className="text-xs text-[#a1a1aa] line-clamp-2 leading-relaxed font-normal">
+                        <p className="text-xs text-white/40 line-clamp-2 leading-relaxed font-normal">
                           {sample.description}
                         </p>
                       </div>
-                      <div className="flex items-center justify-end text-[11px] text-[#1DB954] font-bold mt-4 self-stretch">
+                      <div className="flex items-center justify-end text-[11px] text-white font-bold mt-4 self-stretch font-mono uppercase tracking-wider">
                         <span>Load Playlist</span>
                         <ArrowRight className="w-3.5 h-3.5 ml-1 transition-transform group-hover:translate-x-1" />
                       </div>
@@ -1160,13 +1569,13 @@ export default function App() {
               </div>
 
               {/* SAVED & CLOUD PLAYLISTS USER LIBRARY */}
-              <div className="border-t border-[#1a1a1e] pt-8 flex flex-col gap-5">
+              <div className="border-t border-white/10 pt-8 flex flex-col gap-5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                      <Database className="w-5 h-5 text-[#1DB954]" /> Your Saved Library
+                      <Database className="w-5 h-5 text-white" /> Your Saved Library
                     </h3>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p className="text-xs text-white/40 mt-0.5 font-mono">
                       Organize, search, and recall saved playlists from your local database and connected cloud workspace.
                     </p>
                   </div>
@@ -1176,12 +1585,12 @@ export default function App() {
                     <div className="relative w-full sm:w-64">
                       <input 
                         type="text"
-                        className="w-full h-9 bg-[#111113] border border-[#27272a] rounded-lg pl-9 pr-4 text-xs text-[#fafafa] placeholder-gray-500 font-medium focus:outline-none focus:border-[#1DB954] transition-colors"
+                        className="w-full h-9 vision-glass-input rounded-xl pl-9 pr-4 text-xs text-[#fafafa] placeholder-white/30 font-medium focus:outline-none transition-colors"
                         placeholder="Search saved playlists..."
                         value={playlistSearchQuery}
                         onChange={(e) => setPlaylistSearchQuery(e.target.value)}
                       />
-                      <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-gray-500" />
+                      <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-white/30" />
                     </div>
                   )}
                 </div>
@@ -1197,10 +1606,10 @@ export default function App() {
 
                     if (filteredSaved.length === 0) {
                       return (
-                        <div className="py-12 bg-[#0c0c0e] border border-[#18181b] rounded-2xl flex flex-col items-center justify-center text-center text-gray-500 gap-2">
-                          <Search className="w-6 h-6 text-gray-600 animate-pulse" />
+                        <div className="py-12 bg-white/5 border border-white/5 rounded-2xl flex flex-col items-center justify-center text-center text-white/45 gap-2">
+                          <Search className="w-6 h-6 text-white/30 animate-pulse" />
                           <p className="text-xs font-semibold">No playlist matches "{playlistSearchQuery}"</p>
-                          <p className="text-[11px] text-gray-650">Verify your spelling or terms and search again.</p>
+                          <p className="text-[11px] text-white/30">Verify your spelling or terms and search again.</p>
                         </div>
                       );
                     }
@@ -1215,40 +1624,40 @@ export default function App() {
                             <div 
                               key={pl.id}
                               onClick={() => handleLoadSavedPlaylist(pl)}
-                              className="bg-[#111113] hover:bg-[#151518] border border-[#27272a] hover:border-[#3e3e42] rounded-2xl p-5 text-left transition-all relative flex flex-col justify-between cursor-pointer group shadow-lg"
+                              className="bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-2xl p-5 text-left transition-all relative flex flex-col justify-between cursor-pointer group shadow-lg"
                             >
                               <div>
                                 <div className="flex items-start justify-between gap-2 mb-2">
-                                  <h4 className="text-sm font-bold text-white group-hover:text-[#1DB954] transition-colors line-clamp-1">
+                                  <h4 className="text-sm font-bold text-white group-hover:text-white/80 transition-colors line-clamp-1">
                                     {pl.name}
                                   </h4>
                                   {pl.isSynced && user ? (
-                                    <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                    <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-mono uppercase">
                                       <Cloud className="w-2.5 h-2.5" /> Synced
                                     </span>
                                   ) : (
-                                    <span className="flex items-center gap-1 text-[9px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                                    <span className="flex items-center gap-1 text-[9px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-mono uppercase">
                                       <CloudOff className="w-2.5 h-2.5" /> Local
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-xs text-[#a1a1aa] line-clamp-2 leading-relaxed mb-4" dangerouslySetInnerHTML={{ __html: pl.description || "No description provided." }} />
+                                <p className="text-xs text-white/40 line-clamp-2 leading-relaxed mb-4" dangerouslySetInnerHTML={{ __html: pl.description || "No description provided." }} />
                               </div>
 
-                              <div className="flex items-center justify-between border-t border-[#1c1c20] pt-3.5 mt-2">
-                                <div className="text-[10px] font-medium text-[#71717a] flex flex-col gap-0.5 font-mono">
+                              <div className="flex items-center justify-between border-t border-white/5 pt-3.5 mt-2">
+                                <div className="text-[10px] font-medium text-white/40 flex flex-col gap-0.5 font-mono">
                                   <span>Tracks: {pl.tracks.length} • Matched: {plMatchedCount}</span>
                                   <span>Accuracy: {plMatchRate}%</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={(e) => handleDeleteConfirmDialog(pl.id, e)}
-                                    className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg border border-[#27272a] hover:border-red-500/20 transition-all"
+                                    className="p-2 text-white/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg border border-white/10 hover:border-red-500/20 transition-all"
                                     title="Delete Playlist"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
-                                  <span className="h-8 px-4 bg-white/5 hover:bg-white text-white hover:text-black font-semibold text-xs rounded-lg transition-all flex items-center justify-center gap-1">
+                                  <span className="h-8 px-4 bg-white/5 hover:bg-white text-white hover:text-black font-semibold text-xs rounded-lg transition-all flex items-center justify-center gap-1 font-mono uppercase tracking-wider">
                                     Load <ArrowRight className="w-3 h-3" />
                                   </span>
                                 </div>
@@ -1361,36 +1770,36 @@ export default function App() {
                   </button>
                   <button 
                     onClick={handleClearAllConfirm}
-                    className="flex-1 sm:flex-none px-4 py-2.5 text-xs text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#18181b] rounded-xl border border-[#27272a] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="flex-1 sm:flex-none px-4 py-2.5 text-xs text-white/60 hover:text-white hover:bg-white/5 rounded-xl border border-white/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     title="Hard reset of your workspace to import something completely new"
                   >
                     <ListRestart className="w-3.5 h-3.5" /> Reset Workspace
                   </button>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 text-xs text-[#52525b] font-mono whitespace-nowrap hidden sm:flex">
+                  <div className="flex items-center gap-2 text-xs text-white/40 font-mono whitespace-nowrap hidden sm:flex">
                     <span>State Autosaved</span>
-                    <div className="w-2 h-2 rounded-full bg-[#1DB954] animate-pulse" />
+                    <div className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
                   </div>
                   <button 
                     onClick={handleManualSaveTrigger}
-                    className="px-4 py-2 text-sm font-bold text-white bg-[#1DB954] hover:bg-emerald-500 rounded-xl border border-transparent transition-all shadow-[0_0_15px_rgba(29,185,84,0.15)] flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 text-sm font-extrabold text-black bg-[#10B981] hover:bg-[#059669] rounded-xl border border-transparent transition-all shadow-[0_4px_15px_rgba(16,185,129,0.2)] flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Save className="w-4 h-4" /> Save to Library
+                    <Save className="w-4 h-4 text-black" /> Save to Library
                   </button>
                 </div>
               </div>
 
               {/* Playlist Summary Dashboard banner */}
-              <div className="bg-[#111113] border border-[#27272a] rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <div className="absolute right-0 top-0 w-64 h-64 bg-[#1DB954]/5 rounded-full blur-3xl pointer-events-none" />
+              <div className="vision-glass rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <div className="absolute right-0 top-0 w-64 h-64 bg-white/5 rounded-full blur-3xl pointer-events-none" />
                 <div className="flex flex-col gap-2 max-w-xl">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] bg-[#1DB954]/10 text-[#1DB954] border border-[#1DB954]/20 px-2.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                    <span className="text-[10px] bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 px-2.5 py-0.5 rounded font-bold uppercase tracking-wider font-mono">
                       Loaded Spotify Playlist
                     </span>
-                    <span className="text-[#52525b] text-xs font-mono">•</span>
-                    <span className="text-xs text-[#a1a1aa]">
+                    <span className="text-white/20 text-xs font-mono">•</span>
+                    <span className="text-xs text-white/40">
                       {tracks.length} Songs Loaded
                     </span>
                   </div>
@@ -1398,13 +1807,13 @@ export default function App() {
                     {playlistMeta?.name}
                   </h3>
                   {playlistMeta?.description && (
-                    <p className="text-sm text-[#a1a1aa]" dangerouslySetInnerHTML={{ __html: playlistMeta.description }} />
+                    <p className="text-sm text-white/60" dangerouslySetInnerHTML={{ __html: playlistMeta.description }} />
                   )}
                   {playableTracks.length > 0 && (
                     <div className="mt-3.5 flex flex-wrap gap-3">
                       <button 
                         onClick={handlePlayWholePlaylist}
-                        className="px-5 py-2.5 bg-[#1DB954] hover:bg-emerald-400 text-black font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(29,185,84,0.3)] flex items-center gap-2 cursor-pointer active:scale-95"
+                        className="px-5 py-2.5 bg-[#10B981] hover:bg-[#059669] text-black font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_4px_15px_rgba(16,185,129,0.2)] flex items-center gap-2 cursor-pointer active:scale-95"
                         title="Start playing the whole playlist automatically"
                       >
                         <Play className="w-3.5 h-3.5 fill-black text-black" />
@@ -1415,41 +1824,41 @@ export default function App() {
                 </div>
 
                 {/* Performance stats mini card */}
-                <div className="flex flex-col md:items-end gap-1 flex-shrink-0 bg-[#18181b] p-4 rounded-xl border border-[#27272a] w-full md:w-auto shadow-inner">
-                  <div className="flex items-center gap-1 text-[10px] text-[#52525b] font-bold uppercase tracking-wider mb-1">
-                    <Sparkles className="w-3.5 h-3.5 text-[#1DB954]" /> Auto-Match Precision
+                <div className="flex flex-col md:items-end gap-1 flex-shrink-0 bg-white/5 p-4 rounded-xl border border-white/10 w-full md:w-auto shadow-inner">
+                  <div className="flex items-center gap-1 text-[10px] text-[#10B981] font-bold uppercase tracking-wider mb-1 font-mono">
+                    <Sparkles className="w-3.5 h-3.5 text-[#10B981]" /> Auto-Match Precision
                   </div>
                   <div className="text-2xl font-bold text-white flex items-baseline gap-1">
-                    {matchRate}% <span className="text-[#1DB954] text-xs font-bold uppercase">High Precision</span>
+                    {matchRate}% <span className="text-[#10B981] text-xs font-bold uppercase font-mono">High Precision</span>
                   </div>
-                  <p className="text-xs text-[#a1a1aa] mt-0.5">
+                  <p className="text-xs text-white/40 mt-0.5 font-mono">
                     {matchedCount} of {tracks.length} tracks matched perfectly
                   </p>
                 </div>
               </div>
 
               {/* Filtering Controls and Table Section */}
-              <div className="bg-[#09090b] border border-[#27272a] rounded-2xl overflow-hidden shadow-2xl">
+              <div className="vision-glass rounded-2xl overflow-hidden shadow-2xl">
                 {/* Section header & filters */}
-                <div className="border-b border-[#18181b] p-5 bg-[#0c0c0e] flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="border-b border-white/10 p-5 bg-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div>
                     <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-[#1DB954]" /> Playlist Songs Matching
+                      <Layers className="w-4 h-4 text-white" /> Playlist Songs Matching
                     </h4>
-                    <p className="text-xs text-[#a1a1aa] mt-1">
+                    <p className="text-xs text-white/40 mt-1">
                       Check aligned YouTube videos or paste manual fallback URLs if correct mapping is missing.
                     </p>
                   </div>
 
                   {/* FILTER SELECTION TABS & RETRY ACTION */}
                   <div className="flex flex-col sm:flex-row items-center gap-3">
-                    <div className="flex rounded-xl bg-[#18181b] p-1 border border-[#27272a]">
+                    <div className="flex rounded-xl bg-white/5 p-1 border border-white/10">
                       <button 
                         onClick={() => setActiveFilter('all')}
                         className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                           activeFilter === 'all' 
-                          ? 'bg-[#27272a] text-white shadow-sm' 
-                          : 'text-[#a1a1aa] hover:text-white'
+                          ? 'bg-white/10 text-white shadow-sm' 
+                          : 'text-white/60 hover:text-white'
                         }`}
                       >
                         All ({tracks.length})
@@ -1458,8 +1867,8 @@ export default function App() {
                         onClick={() => setActiveFilter('matched')}
                         className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                           activeFilter === 'matched' 
-                          ? 'bg-[#1DB954]/10 text-[#1DB954] shadow-sm border border-[#1DB954]/15' 
-                          : 'text-[#a1a1aa] hover:text-[#1DB954]'
+                          ? 'bg-white/10 text-white shadow-sm border border-white/15' 
+                          : 'text-white/60 hover:text-white'
                         }`}
                       >
                         Matched ({matchedCount})
@@ -1469,7 +1878,7 @@ export default function App() {
                         className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                           activeFilter === 'unresolved' 
                           ? 'bg-red-500/10 text-red-400 shadow-sm border border-red-500/15' 
-                          : 'text-[#a1a1aa] hover:text-red-400'
+                          : 'text-white/60 hover:text-red-400'
                         }`}
                       >
                         Unresolved ({unresolvedCount})
@@ -1479,7 +1888,7 @@ export default function App() {
                     {unresolvedCount > 0 && (
                       <button
                         onClick={handleRetryAllUnresolved}
-                        className="px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-white bg-[#1DB954] hover:bg-emerald-500 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95"
+                        className="px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-black bg-white hover:bg-white/90 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95"
                         title="Re-run matching search on missing tracks"
                       >
                         <RefreshCw className="w-3.5 h-3.5 animate-pulse" /> Re-Scan Unresolved
@@ -1489,21 +1898,21 @@ export default function App() {
                 </div>
 
                 {/* Dynamic Song Search Input Bar */}
-                <div className="bg-[#0c0c0e] border-b border-[#18181b] px-5 py-3 flex items-center justify-between gap-3 text-xs text-[#a1a1aa]">
+                <div className="bg-white/5 border-b border-white/10 px-5 py-3 flex items-center justify-between gap-3 text-xs text-white/40">
                   <div className="relative flex-1">
                     <input 
                       type="text"
-                      className="w-full h-10 bg-[#121214] border border-[#27272a] rounded-xl pl-10 pr-4 text-xs text-[#fafafa] placeholder-gray-500 font-medium focus:outline-none focus:border-[#1DB954] transition-all"
+                      className="w-full h-10 vision-glass-input rounded-xl pl-10 pr-4 text-xs text-[#fafafa] placeholder-white/30 font-medium focus:outline-none transition-all"
                       placeholder="Search songs inside this playlist by title, artist, or album..."
                       value={songSearchQuery}
                       onChange={(e) => setSongSearchQuery(e.target.value)}
                     />
-                    <Search className="absolute left-3.5 top-[13px] w-4 h-4 text-gray-500" />
+                    <Search className="absolute left-3.5 top-[13px] w-4 h-4 text-white/30" />
                   </div>
                   {songSearchQuery.trim() && (
                     <button 
                       onClick={() => setSongSearchQuery("")}
-                      className="text-[11px] font-bold text-gray-400 hover:text-white transition-colors cursor-pointer bg-[#18181b] px-3 py-1.5 rounded-lg border border-[#27272a]"
+                      className="text-[11px] font-bold text-white/60 hover:text-white transition-colors cursor-pointer bg-white/5 px-3 py-1.5 rounded-lg border border-white/10"
                     >
                       Clear
                     </button>
@@ -1512,7 +1921,7 @@ export default function App() {
 
                 {/* THE MAIN TRACKS TABLE LISTING */}
                 <div 
-                  className="divide-y divide-[#18181b] max-h-[500px] overflow-y-auto custom-scrollbar scroll-smooth [overscroll-behavior:contain]"
+                  className="divide-y divide-white/5 max-h-[500px] overflow-y-auto custom-scrollbar scroll-smooth [overscroll-behavior:contain]"
                   style={{ transform: "translate3d(0, 0, 0)", WebkitOverflowScrolling: "touch" }}
                 >
                   <AnimatePresence initial={false}>
@@ -1542,21 +1951,21 @@ export default function App() {
                   </AnimatePresence>
 
                   {filteredTracks.length === 0 && (
-                    <div className="py-12 px-6 text-center text-[#52525b] flex flex-col items-center justify-center gap-3">
-                      <AlertCircle className="w-8 h-8 text-[#27272a]" />
+                    <div className="py-12 px-6 text-center text-white/45 flex flex-col items-center justify-center gap-3">
+                      <AlertCircle className="w-8 h-8 text-white/20" />
                       <div>
                         {activeFilter === 'unresolved' ? (
                           <>
-                            <p className="font-bold text-[#a1a1aa]">All songs are fully matched!</p>
-                            <p className="text-xs text-[#52525b] mt-0.5">Unresolved filters only list songs awaiting links.</p>
+                            <p className="font-bold text-white/80">All songs are fully matched!</p>
+                            <p className="text-xs text-white/40 mt-0.5 font-mono">Unresolved filters only list songs awaiting links.</p>
                           </>
                         ) : activeFilter === 'matched' ? (
                           <>
-                            <p className="font-bold text-[#a1a1aa]">No songs have matched yet.</p>
-                            <p className="text-xs text-[#52525b] mt-0.5">Try triggering individual searches or link them manually.</p>
+                            <p className="font-bold text-white/80">No songs have matched yet.</p>
+                            <p className="text-xs text-white/40 mt-0.5 font-mono">Try triggering individual searches or link them manually.</p>
                           </>
                         ) : (
-                          <p className="font-bold text-[#a1a1aa]">No songs found in this list.</p>
+                          <p className="font-bold text-white/80">No songs found in this list.</p>
                         )}
                       </div>
                     </div>
@@ -1564,25 +1973,25 @@ export default function App() {
                 </div>
 
                 {/* Instructions helper block inside the container */}
-                <div className="bg-[#0c0c0e] p-4 border-t border-[#18181b] flex items-start gap-2.5">
-                  <Info className="w-4 h-4 text-[#1DB954] flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-[#a1a1aa] leading-relaxed">
+                <div className="bg-white/5 p-4 border-t border-white/10 flex items-start gap-2.5">
+                  <Info className="w-4 h-4 text-white flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-white/60 leading-relaxed">
                     <strong>Manual Fallback Mode:</strong> If a specific song could not be automatically found or has been mapped to a wrong cover, simply search using your own query terms or copy and paste an exact YouTube URL / Video ID right in the input box. Syncify will automatically secure it and compile it!
                   </p>
                 </div>
               </div>
 
               {/* Floating or fixed Action Footer Banner compiling the final YouTube playlist */}
-              <div className="bg-[#0c0c0e] border border-[#27272a] rounded-2xl p-6 shadow-xl flex flex-col lg:flex-row items-center justify-between gap-6">
+              <div className="vision-glass rounded-2xl p-6 shadow-xl flex flex-col lg:flex-row items-center justify-between gap-6">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-red-600/10 text-red-500 rounded-xl border border-red-500/15">
+                  <div className="p-3 bg-[#10B981]/10 text-[#10B981] rounded-xl border border-[#10B981]/20">
                     <Youtube className="w-6 h-6" />
                   </div>
                   <div>
                     <h4 className="font-bold text-white text-base">
                       Compile YouTube Queue
                     </h4>
-                    <p className="text-xs text-[#a1a1aa] mt-0.5">
+                    <p className="text-xs text-white/40 mt-0.5">
                       Ready with {matchedCount} matched track{matchedCount !== 1 ? 's' : ''}. Clicking below opens the sequential queue immediately!
                     </p>
                   </div>
@@ -1596,7 +2005,7 @@ export default function App() {
                       navigator.clipboard.writeText(tempUrl);
                       alert("Successfully copied YouTube compiled watch URL to your clipboard!");
                     }}
-                    className="px-5 py-3 rounded-xl border border-[#27272a] hover:bg-[#18181b] text-sm font-semibold text-[#a1a1aa] hover:text-white transition-all disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="px-5 py-3 rounded-xl border border-white/10 hover:bg-white/5 text-sm font-semibold text-white/60 hover:text-white transition-all disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-1.5 cursor-pointer font-mono uppercase tracking-wider"
                     title="Copy links list as queue URL"
                   >
                     <ClipboardCopy className="w-4 h-4" /> Copy Link
@@ -1605,7 +2014,7 @@ export default function App() {
                   <button 
                     disabled={matchedCount === 0}
                     onClick={handleCreatePlaylistLink}
-                    className="flex-1 sm:flex-none px-8 py-3.5 bg-[#fafafa] hover:bg-white text-[#09090b] text-sm font-bold rounded-xl shadow-lg transition-all active:scale-[0.98] disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer"
+                    className="flex-1 sm:flex-none px-8 py-3.5 bg-[#10B981] text-black text-sm font-extrabold rounded-xl shadow-[0_4px_20px_rgba(16,185,129,0.3)] transition-all active:scale-[0.98] disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer font-mono uppercase tracking-wider hover:bg-[#059669]"
                   >
                     Load in YouTube <ExternalLink className="w-4 h-4" />
                   </button>
@@ -1622,7 +2031,7 @@ export default function App() {
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl shadow-xl flex items-center gap-3 z-50 ${showToast.type === 'error' ? 'bg-red-500/10 border border-red-500/20 text-red-500' : 'bg-[#1DB954]/10 border border-[#1DB954]/20 text-[#1DB954]'}`}
+              className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl shadow-xl flex items-center gap-3 z-50 ${showToast.type === 'error' ? 'bg-red-500/10 border border-red-500/20 text-red-500' : 'bg-white/15 border border-white/20 text-white'}`}
             >
               <span className="text-sm font-medium">{showToast.message}</span>
             </motion.div>
@@ -1881,9 +2290,22 @@ export default function App() {
                   {currentPlayingTrack.artist}
                 </p>
                 {/* Visual indicator highlighting Youtube source match status */}
-                <span className="inline-flex items-center gap-1 text-[8px] text-[#1DB954] mt-1 font-bold bg-[#1DB954]/10 border border-[#1DB954]/20 px-1.5 py-0.5 rounded uppercase tracking-wide">
-                  <Youtube className="w-2.5 h-2.5 text-red-500 fill-red-500" /> YouTube Match
-                </span>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="inline-flex items-center gap-1 text-[8px] text-[#1DB954] font-bold bg-[#1DB954]/10 border border-[#1DB954]/20 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                    <Youtube className="w-2.5 h-2.5 text-red-500 fill-red-500" /> YouTube Match
+                  </span>
+                  <button
+                    onClick={() => {
+                      setChangeSearchQuery(`${currentPlayingTrack.title} ${currentPlayingTrack.artist}`);
+                      setShowChangeSongModal(true);
+                      fetchChangeSuggestions(`${currentPlayingTrack.title} ${currentPlayingTrack.artist}`);
+                    }}
+                    className="inline-flex items-center gap-1 text-[8px] text-amber-405 hover:text-white font-bold bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/25 px-1.5 py-0.5 rounded uppercase tracking-wide cursor-pointer transition-all"
+                    title="Correct the YouTube video match for this song if needed"
+                  >
+                    <RefreshCw className="w-2 h-2" /> Change
+                  </button>
+                </div>
               </div>
 
               {/* Action to toggle the floating compact TV screen feed */}
@@ -2068,6 +2490,94 @@ export default function App() {
               </button>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+ 
+      {/* Modal for Correcting Song Matches */}
+      <AnimatePresence>
+        {showChangeSongModal && currentPlayingTrack && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#111113] border border-[#27272a] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
+            >
+              {/* Header */}
+              <div className="p-5 border-b border-[#27272a] flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">Correct Song Match</h3>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Select the correct version of <span className="text-white font-semibold">"{currentPlayingTrack.title}"</span>.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowChangeSongModal(false)}
+                  className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Search bar inside modal */}
+              <div className="p-4 bg-black/20 border-b border-[#27272a]/60 flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    className="w-full h-10 bg-[#121214] border border-[#27272a] rounded-lg pl-9 pr-4 text-xs text-[#fafafa] placeholder-zinc-500 focus:outline-none focus:border-[#1DB954] transition-colors"
+                    value={changeSearchQuery}
+                    onChange={(e) => setChangeSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && fetchChangeSuggestions(changeSearchQuery)}
+                  />
+                  <Search className="absolute left-3 top-3 w-4 h-4 text-zinc-500" />
+                </div>
+                <button
+                  onClick={() => fetchChangeSuggestions(changeSearchQuery)}
+                  disabled={searchingChangeSuggestions}
+                  className="px-4 bg-[#1DB954] hover:bg-[#1ed760] text-black text-xs font-bold rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 cursor-pointer"
+                >
+                  Search
+                </button>
+              </div>
+
+              {/* List of candidates */}
+              <div className="flex-1 overflow-y-auto divide-y divide-[#27272a]/40 p-2 custom-scrollbar">
+                {searchingChangeSuggestions ? (
+                  <div className="py-12 flex flex-col items-center justify-center gap-3 text-zinc-500 text-xs">
+                    <Loader2 className="w-6 h-6 animate-spin text-[#1DB954]" />
+                    <span>Searching YouTube candidates...</span>
+                  </div>
+                ) : changeSongSuggestions.length === 0 ? (
+                  <div className="py-12 text-center text-zinc-500 text-xs">
+                    No matching videos found. Try refining your search.
+                  </div>
+                ) : (
+                  changeSongSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.videoId}
+                      onClick={() => handleCorrectSongMatch(suggestion)}
+                      className="w-full p-3 hover:bg-[#18181b] rounded-xl text-left transition-colors flex items-center gap-3 group cursor-pointer"
+                    >
+                      <img
+                        src={suggestion.thumbnailUrl}
+                        alt={suggestion.title}
+                        className="w-12 h-12 object-cover rounded border border-[#27272a]"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-bold text-white truncate group-hover:text-[#1DB954] transition-colors">
+                          {suggestion.title}
+                        </h4>
+                        <p className="text-[10px] text-zinc-400 mt-0.5 truncate">
+                          {suggestion.artistName} • {suggestion.duration}
+                        </p>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
