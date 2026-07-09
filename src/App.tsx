@@ -135,6 +135,42 @@ export default function App() {
   const [repeatMode, setRepeatMode] = useState<'none' | 'one' | 'all'>('all');
   const [isShuffled, setIsShuffled] = useState(false);
   const [showPlayerVideoPreview, setShowPlayerVideoPreview] = useState(false);
+  const [showFeedControls, setShowFeedControls] = useState(false);
+  const feedControlsTimeoutRef = React.useRef<any>(null);
+
+  const triggerFeedControls = () => {
+    setShowFeedControls(true);
+    if (feedControlsTimeoutRef.current) {
+      clearTimeout(feedControlsTimeoutRef.current);
+    }
+    feedControlsTimeoutRef.current = setTimeout(() => {
+      setShowFeedControls(false);
+    }, 4000); // 4 seconds of visibility
+  };
+
+  const handleFeedClick = () => {
+    if (showFeedControls) {
+      setShowFeedControls(false);
+      if (feedControlsTimeoutRef.current) {
+        clearTimeout(feedControlsTimeoutRef.current);
+      }
+    } else {
+      triggerFeedControls();
+    }
+  };
+
+  const handleFeedDoubleClick = () => {
+    setIsVideoFullscreen(prev => !prev);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (feedControlsTimeoutRef.current) {
+        clearTimeout(feedControlsTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
   const [isInsideIframe, setIsInsideIframe] = useState(false);
   const [ytPlayerState, setYtPlayerState] = useState<number>(-1);
@@ -320,6 +356,18 @@ export default function App() {
     }
   };
 
+  // Auto-play newly added queue tracks if the previous song has ended and the player has gone idle
+  useEffect(() => {
+    if (queue.length > 0 && !isPlaying) {
+      // Determine if the current song is finished/ended or if no track has started yet
+      const isSongFinishedOrIdle = ytPlayerState === 0 || currentTimeSecs >= trackDurationSecs - 3 || !activePlayingTrackId;
+      if (isSongFinishedOrIdle) {
+        console.log("[AutoPlay Queue] Player is idle/finished. Automatically triggering newly added queue song!");
+        handlePlayNextFromQueue();
+      }
+    }
+  }, [queue.length, isPlaying, ytPlayerState, currentTimeSecs, trackDurationSecs, activePlayingTrackId]);
+
   const handleSkipPrev = () => {
     // 1. Check if we have history we can skip back to!
     if (previousTracks.length > 0) {
@@ -365,6 +413,129 @@ export default function App() {
       setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
     }
   };
+
+  // Background Audio & Media Session synchronization engine for mobile lockscreen/background play
+  const silentAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const handleSkipNextRef = React.useRef(handleSkipNext);
+  const handleSkipPrevRef = React.useRef(handleSkipPrev);
+
+  // Keep references fresh to avoid recreation cycles
+  useEffect(() => {
+    handleSkipNextRef.current = handleSkipNext;
+    handleSkipPrevRef.current = handleSkipPrev;
+  });
+
+  // Initialize continuous silent audio context to signal active background audio stream
+  useEffect(() => {
+    const audio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==");
+    audio.loop = true;
+    silentAudioRef.current = audio;
+
+    // Register lockscreen physical/digital action handlers
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.setActionHandler('play', () => {
+        console.log("[MediaSession] User triggered Lock Screen Play");
+        setIsPlaying(true);
+        if (silentAudioRef.current) {
+          silentAudioRef.current.play().catch(e => console.log(e));
+        }
+        if (playerIframeRef.current?.contentWindow) {
+          playerIframeRef.current.contentWindow.postMessage(
+            JSON.stringify({ event: 'command', func: 'playVideo', args: [] }),
+            '*'
+          );
+        }
+      });
+
+      navigator.mediaSession.setActionHandler('pause', () => {
+        console.log("[MediaSession] User triggered Lock Screen Pause");
+        setIsPlaying(false);
+        if (silentAudioRef.current) {
+          silentAudioRef.current.pause();
+        }
+        if (playerIframeRef.current?.contentWindow) {
+          playerIframeRef.current.contentWindow.postMessage(
+            JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }),
+            '*'
+          );
+        }
+      });
+
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        console.log("[MediaSession] User triggered Lock Screen Prev");
+        handleSkipPrevRef.current();
+      });
+
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        console.log("[MediaSession] User triggered Lock Screen Next");
+        handleSkipNextRef.current();
+      });
+    }
+
+    return () => {
+      if (silentAudioRef.current) {
+        silentAudioRef.current.pause();
+        silentAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  // Synchronize dynamic browser-level metadata onto OS lockscreen widget
+  useEffect(() => {
+    if ('mediaSession' in navigator && currentPlayingTrack) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentPlayingTrack.title,
+        artist: currentPlayingTrack.artistName || "Syncify Player",
+        album: "Live Aggregated Stream",
+        artwork: [
+          { src: currentPlayingTrack.thumbnailUrl || 'https://img.youtube.com/vi/' + currentPlayingTrack.videoId + '/mqdefault.jpg', sizes: '96x96', type: 'image/jpeg' },
+          { src: currentPlayingTrack.thumbnailUrl || 'https://img.youtube.com/vi/' + currentPlayingTrack.videoId + '/mqdefault.jpg', sizes: '128x128', type: 'image/jpeg' },
+          { src: currentPlayingTrack.thumbnailUrl || 'https://img.youtube.com/vi/' + currentPlayingTrack.videoId + '/mqdefault.jpg', sizes: '192x192', type: 'image/jpeg' },
+          { src: currentPlayingTrack.thumbnailUrl || 'https://img.youtube.com/vi/' + currentPlayingTrack.videoId + '/mqdefault.jpg', sizes: '256x256', type: 'image/jpeg' },
+          { src: currentPlayingTrack.thumbnailUrl || 'https://img.youtube.com/vi/' + currentPlayingTrack.videoId + '/mqdefault.jpg', sizes: '384x384', type: 'image/jpeg' },
+          { src: currentPlayingTrack.thumbnailUrl || 'https://img.youtube.com/vi/' + currentPlayingTrack.videoId + '/mqdefault.jpg', sizes: '512x512', type: 'image/jpeg' },
+        ]
+      });
+    }
+  }, [currentPlayingTrack]);
+
+  // Synchronize master application play state with local silent audio state and MediaSession status
+  useEffect(() => {
+    if (isPlaying) {
+      if (silentAudioRef.current) {
+        silentAudioRef.current.play().catch(err => {
+          console.log("[Silent Audio] Auto-play prevented:", err);
+        });
+      }
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+    } else {
+      if (silentAudioRef.current) {
+        silentAudioRef.current.pause();
+      }
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
+    }
+  }, [isPlaying]);
+
+  // Handle visibility changes proactively to keep silent loop active and streaming in background
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      console.log(`[Visibility Change] Active tab status: ${document.visibilityState}`);
+      if (document.visibilityState === 'hidden' && isPlaying) {
+        if (silentAudioRef.current) {
+          silentAudioRef.current.play().catch(e => console.log("[Background Play] Silent loop play failed:", e));
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isPlaying]);
 
   const fetchChangeSuggestions = async (query: string) => {
     setSearchingChangeSuggestions(true);
@@ -468,7 +639,20 @@ export default function App() {
           if (playerState === 1) {
             setIsPlaying(true);
           } else if (playerState === 2) {
-            setIsPlaying(false);
+            // If the document is hidden (screen locked or browser minimized), do NOT set isPlaying(false).
+            // Retain the playing status so our silent HTML5 audio loop keeps playing, which keeps the browser
+            // tab active in background, preserves JavaScript execution, and maintains lock screen controls!
+            if (document.visibilityState === 'visible') {
+              setIsPlaying(false);
+            } else {
+              console.log("[Background Play] YouTube paused while backgrounded/locked. Retaining playing state and silent audio loop.");
+              if (playerIframeRef.current?.contentWindow) {
+                playerIframeRef.current.contentWindow.postMessage(
+                  JSON.stringify({ event: "command", func: "playVideo", args: [] }),
+                  "*"
+                );
+              }
+            }
           }
 
           if (playerState === 0) {
@@ -1298,23 +1482,23 @@ export default function App() {
               exit={{ opacity: 0, y: -15 }}
               className="max-w-3xl mx-auto flex flex-col gap-8 py-4"
             >
-              <div className="text-center flex flex-col gap-3">
-                <span className="text-[11px] font-bold uppercase tracking-[0.2rem] text-white bg-white/10 px-3.5 py-1 rounded border border-white/15 self-center">
+              <div className="text-center flex flex-col gap-3 px-2">
+                <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.15rem] sm:tracking-[0.2rem] text-white bg-white/10 px-3 py-1 rounded border border-white/15 self-center">
                   ✨ Instant Conversion Engine
                 </span>
-                <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-white">
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-white">
                   No More Manual Re-ordering
                 </h2>
-                <p className="text-base text-white/60 max-w-lg mx-auto">
+                <p className="text-xs sm:text-sm md:text-base text-white/60 max-w-lg mx-auto leading-relaxed">
                   Paste any public Spotify playlist. We'll map each song to its YouTube matches in the exact original sequence. Watch instantly in a single aggregated queue.
                 </p>
               </div>
 
               {/* Home Tab Switcher */}
-              <div className="flex rounded-full bg-black/40 p-1 border border-white/10 max-w-sm mx-auto w-full mb-4">
+              <div className="flex rounded-full bg-black/40 p-1 border border-white/10 max-w-sm mx-auto w-full mb-2">
                 <button
                   onClick={() => setHomeTab('quick')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
                     homeTab === 'quick'
                       ? "bg-[#10B981] text-black font-extrabold shadow-[0_4px_20px_rgba(16,185,129,0.3)] scale-[1.02]"
                       : "text-white/60 hover:text-white hover:bg-white/5"
@@ -1325,7 +1509,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => setHomeTab('playlist')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
                     homeTab === 'playlist'
                       ? "bg-[#10B981] text-black font-extrabold shadow-[0_4px_20px_rgba(16,185,129,0.3)] scale-[1.02]"
                       : "text-white/60 hover:text-white hover:bg-white/5"
@@ -1344,7 +1528,7 @@ export default function App() {
                 />
               ) : (
                 /* Paste Entry Card */
-                <div className="vision-glass rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden">
+                <div className="vision-glass rounded-3xl p-4 sm:p-6 md:p-8 shadow-2xl relative overflow-hidden">
                 <div className="absolute right-0 top-0 w-80 h-80 bg-white/5 rounded-full blur-3xl pointer-events-none" />
                 <div className="absolute left-0 bottom-0 w-80 h-80 bg-white/5 rounded-full blur-3xl pointer-events-none" />
 
@@ -1354,10 +1538,10 @@ export default function App() {
 
                 <div className="flex flex-col gap-4">
                   <div className="flex flex-col md:flex-row gap-3">
-                    <div className="relative flex-1">
+                    <div className="relative w-full md:flex-1 h-14">
                       <input 
                         type="text"
-                        className="w-full h-14 vision-glass-input rounded-xl px-5 pl-12 pr-12 text-sm text-[#fafafa] placeholder-white/30 font-medium focus:outline-none transition-all shadow-inner"
+                        className="w-full h-full vision-glass-input rounded-xl px-5 pl-12 pr-12 text-sm text-[#fafafa] placeholder-white/30 font-medium focus:outline-none transition-all shadow-inner"
                         placeholder="e.g. https://open.spotify.com/playlist/37i9dQZF1DXcBWIGsy3985"
                         value={spotifyUrl}
                         onChange={(e) => {
@@ -2142,17 +2326,20 @@ export default function App() {
         >
           {/* Visual indicator stamp overlay on video tray */}
           {showPlayerVideoPreview && (
-            <div key="live-feed-badge" className="absolute top-1.5 left-1.5 bg-black/80 backdrop-blur text-[8px] uppercase tracking-widest text-[#1DB954] font-bold px-1.5 py-0.5 rounded border border-[#1DB954]/20 flex items-center gap-1 z-10 select-none">
-              <span className="w-1.5 h-1.5 bg-[#1DB954] rounded-full animate-pulse" /> Live Feed {isVideoFullscreen && "(Fullscreen Mode)"}
+            <div key="live-feed-badge" className="absolute top-1.5 left-1.5 bg-black/80 backdrop-blur text-[8px] uppercase tracking-widest text-[#10B981] font-bold px-1.5 py-0.5 rounded border border-[#10B981]/20 flex items-center gap-1 z-10 select-none pointer-events-none">
+              <span className="w-1.5 h-1.5 bg-[#10B981] rounded-full animate-pulse" /> Live Feed {isVideoFullscreen && "(Fullscreen)"}
             </div>
           )}
           
-          {/* Fullscreen & Close controls overlay buttons directly on the video box */}
-          {showPlayerVideoPreview && (
-            <div key="live-feed-controls" className="absolute top-1.5 right-1.5 flex gap-1.5 z-10">
+          {/* Fullscreen & Close controls overlay buttons directly on the video box - only visible when controls are active */}
+          {showPlayerVideoPreview && showFeedControls && (
+            <div key="live-feed-controls" className="absolute top-1.5 right-1.5 flex gap-1.5 z-30">
               <button
-                onClick={() => setIsVideoFullscreen(!isVideoFullscreen)}
-                className="bg-black/80 hover:bg-black/95 text-white hover:text-[#1DB954] p-1.5 rounded-lg border border-[#1DB954]/20 hover:border-[#1DB954]/55 shadow-md flex items-center justify-center transition-all cursor-pointer active:scale-90"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsVideoFullscreen(!isVideoFullscreen);
+                }}
+                className="bg-black/80 hover:bg-black/95 text-white hover:text-[#10B981] p-1.5 rounded-lg border border-[#10B981]/20 hover:border-[#10B981]/55 shadow-md flex items-center justify-center transition-all cursor-pointer active:scale-90"
                 title={isVideoFullscreen ? "Exit Fullscreen" : "Expand to Fullscreen"}
               >
                 {isVideoFullscreen ? (
@@ -2162,7 +2349,10 @@ export default function App() {
                 )}
               </button>
               <button
-                onClick={() => setShowPlayerVideoPreview(false)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowPlayerVideoPreview(false);
+                }}
                 className="bg-black/80 hover:bg-zinc-900 text-rose-400 hover:text-rose-300 p-1.5 rounded-lg border border-rose-500/20 hover:border-rose-500/40 shadow-md flex items-center justify-center transition-all cursor-pointer active:scale-90"
                 title="Hide Video Feed"
               >
@@ -2171,13 +2361,14 @@ export default function App() {
             </div>
           )}
 
-          {/* Tap to Play / Autoplay Block Overlay */}
-          {showPlayerVideoPreview && ytPlayerState !== 1 && (
-            <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center text-center p-3 gap-1.5 pointer-events-none z-[5]">
-              <Play className="w-6 h-6 text-[#1DB954] fill-[#1DB954] animate-pulse" />
-              <p className="text-[10px] font-black text-white uppercase tracking-wider">Tap Feed to Play / Sync</p>
-              <p className="text-[8px] text-zinc-500 font-medium leading-normal max-w-[200px]">Browser blocks autoplay. Click video to resume sync!</p>
-            </div>
+          {/* Transparent Clickable Overlay to Toggle Controls */}
+          {showPlayerVideoPreview && (
+            <div 
+              className="absolute inset-0 z-20 cursor-pointer"
+              onClick={handleFeedClick}
+              onDoubleClick={handleFeedDoubleClick}
+              title="Click to toggle controls, double click for fullscreen"
+            />
           )}
 
           <iframe

@@ -314,7 +314,7 @@ export function QueuePanel({
           Add Songs to Queue
         </div>
         <div className="flex flex-col sm:flex-row gap-2.5 items-stretch">
-          <div className="relative flex-1 h-11">
+          <div className="relative w-full sm:flex-1 h-11">
             <input
               type="text"
               className="w-full h-full vision-glass-input rounded-xl px-4 pl-10 pr-12 text-xs text-[#fafafa] placeholder-white/30 focus:outline-none transition-all"

@@ -208,7 +208,7 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-col md:flex-row gap-3 items-stretch">
-          <div className="relative flex-1 h-12 sm:h-14">
+          <div className="relative w-full md:flex-1 h-12 sm:h-14">
             <input
               type="text"
               className="w-full h-full vision-glass-input rounded-2xl px-5 pl-12 pr-16 text-sm text-[#fafafa] placeholder-white/30 font-medium focus:outline-none transition-all"
