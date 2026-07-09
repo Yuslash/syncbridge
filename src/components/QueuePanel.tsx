@@ -15,16 +15,29 @@ import {
   GripVertical
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { MatchedTrack } from "../types";
+import { MatchedTrack, cleanYouTubeMetadata } from "../types";
 
 interface QueuePanelProps {
   queue: MatchedTrack[];
   setQueue: React.Dispatch<React.SetStateAction<MatchedTrack[]>>;
+  previousTracks: MatchedTrack[];
+  setPreviousTracks: React.Dispatch<React.SetStateAction<MatchedTrack[]>>;
   onPlayNextImmediate: (track: MatchedTrack) => void;
+  onPlayPreviousTrack: (track: MatchedTrack) => void;
   currentPlayingTrack: MatchedTrack | null;
+  isPlaying: boolean;
 }
 
-export function QueuePanel({ queue, setQueue, onPlayNextImmediate, currentPlayingTrack }: QueuePanelProps) {
+export function QueuePanel({ 
+  queue, 
+  setQueue, 
+  previousTracks, 
+  setPreviousTracks, 
+  onPlayNextImmediate, 
+  onPlayPreviousTrack, 
+  currentPlayingTrack,
+  isPlaying
+}: QueuePanelProps) {
   const [inputValue, setInputValue] = useState("");
   const [searching, setSearching] = useState(false);
   const [loadingLink, setLoadingLink] = useState(false);
@@ -106,10 +119,11 @@ export function QueuePanel({ queue, setQueue, onPlayNextImmediate, currentPlayin
         }
 
         const data = await response.json();
+        const cleaned = cleanYouTubeMetadata(data.title, data.artist);
         const track: MatchedTrack = {
           id: `queue_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-          title: data.title,
-          artist: data.artist,
+          title: cleaned.title,
+          artist: cleaned.artist,
           durationMs: data.durationMs,
           artworkUrl: data.artworkUrl,
           videoId: data.videoId,
@@ -173,10 +187,11 @@ export function QueuePanel({ queue, setQueue, onPlayNextImmediate, currentPlayin
   };
 
   const handleSelectSuggestion = (suggestion: any) => {
+    const cleaned = cleanYouTubeMetadata(suggestion.title, suggestion.artistName);
     const track: MatchedTrack = {
       id: `queue_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      title: suggestion.title,
-      artist: suggestion.artistName,
+      title: cleaned.title,
+      artist: cleaned.artist,
       durationMs: suggestion.durationMs,
       artworkUrl: suggestion.thumbnailUrl,
       videoId: suggestion.videoId,
@@ -260,7 +275,7 @@ export function QueuePanel({ queue, setQueue, onPlayNextImmediate, currentPlayin
   };
 
   return (
-    <div className="vision-glass rounded-3xl p-5 md:p-6 shadow-2xl relative flex flex-col gap-6 w-full">
+    <div className="vision-glass rounded-2xl p-4 sm:p-5 md:p-6 shadow-2xl relative flex flex-col gap-4 sm:gap-5 md:gap-6 w-full">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
         <div>
           <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
@@ -298,11 +313,11 @@ export function QueuePanel({ queue, setQueue, onPlayNextImmediate, currentPlayin
         <div className="text-xs font-bold text-white/60 uppercase tracking-wider">
           Add Songs to Queue
         </div>
-        <div className="flex flex-col sm:flex-row gap-2.5">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row gap-2.5 items-stretch">
+          <div className="relative flex-1 h-11">
             <input
               type="text"
-              className="w-full h-11 vision-glass-input rounded-xl px-4 pl-10 pr-12 text-xs text-[#fafafa] placeholder-white/30 focus:outline-none transition-all"
+              className="w-full h-full vision-glass-input rounded-xl px-4 pl-10 pr-12 text-xs text-[#fafafa] placeholder-white/30 focus:outline-none transition-all"
               placeholder="Search song name or paste direct URL..."
               value={inputValue}
               onChange={(e) => {
@@ -311,7 +326,7 @@ export function QueuePanel({ queue, setQueue, onPlayNextImmediate, currentPlayin
               }}
               onKeyDown={(e) => e.key === "Enter" && handleAddToQueueSubmit()}
             />
-            <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-white/40" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
             <button
               onClick={async () => {
                 try {
@@ -324,7 +339,7 @@ export function QueuePanel({ queue, setQueue, onPlayNextImmediate, currentPlayin
                   setErrorMsg("Please paste the link manually.");
                 }
               }}
-              className="absolute right-3 top-2.5 p-1 bg-white/15 hover:bg-white/25 text-white/50 hover:text-white rounded transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-white/15 hover:bg-white/25 text-white/50 hover:text-white rounded transition-colors"
               title="Paste from clipboard"
             >
               <Clipboard className="w-3.5 h-3.5" />
@@ -388,8 +403,162 @@ export function QueuePanel({ queue, setQueue, onPlayNextImmediate, currentPlayin
         </AnimatePresence>
       </div>
 
+      {/* History and Active Session Status */}
+      {previousTracks.length > 0 && (
+        <div className="flex flex-col gap-2.5 pb-5 border-b border-white/10">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 font-mono flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /> Previous Tracks ({previousTracks.length})
+            </span>
+            <button
+              onClick={() => setPreviousTracks([])}
+              className="text-[9px] font-bold text-white/30 hover:text-rose-400 uppercase tracking-widest transition-colors cursor-pointer"
+            >
+              Clear History
+            </button>
+          </div>
+          <div className="flex flex-col gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+            {previousTracks.map((track, idx) => (
+              <div 
+                key={`prev_${track.id}_${idx}`}
+                className="flex items-center gap-3 p-2 bg-white/[0.02] hover:bg-white/[0.06] rounded-xl border border-white/[0.03] hover:border-white/[0.08] transition-all group"
+              >
+                <div className="w-8 h-8 rounded-lg overflow-hidden border border-white/5 flex-shrink-0 relative">
+                  <img
+                    src={track.artworkUrl || `https://img.youtube.com/vi/${track.videoId}/mqdefault.jpg`}
+                    alt={track.title}
+                    className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
+                    referrerPolicy="no-referrer"
+                  />
+                  <button
+                    onClick={() => onPlayPreviousTrack(track)}
+                    className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                    title="Play track again"
+                  >
+                    <Play className="w-3 h-3 text-white fill-current" />
+                  </button>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-semibold text-white/50 group-hover:text-white transition-colors truncate block">
+                    {track.title}
+                  </span>
+                  <span className="text-[10px] text-white/30 truncate block mt-0.5">
+                    {track.artist}
+                  </span>
+                </div>
+                <button
+                  onClick={() => onPlayPreviousTrack(track)}
+                  className="px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-widest text-[#1DB954] hover:text-white bg-[#1DB954]/10 hover:bg-[#1DB954] border border-[#1DB954]/20 hover:border-[#1DB954] rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                >
+                  Play
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {currentPlayingTrack && (
+        <div className="flex flex-col gap-2 pb-5 border-b border-white/10">
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#1DB954] font-mono flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 bg-[#1DB954] rounded-full animate-pulse" /> Currently Playing
+          </span>
+          <motion.div 
+            animate={{
+              boxShadow: [
+                "0 0 12px rgba(29,185,84,0.05), inset 0 0 12px rgba(29,185,84,0.02)",
+                "0 0 24px rgba(29,185,84,0.18), inset 0 0 16px rgba(29,185,84,0.05)",
+                "0 0 12px rgba(29,185,84,0.05), inset 0 0 12px rgba(29,185,84,0.02)"
+              ]
+            }}
+            transition={{
+              duration: 3,
+              repeat: Infinity,
+              ease: "easeInOut"
+            }}
+            className="flex items-center gap-4 p-4 rounded-2xl border border-[#1DB954]/30 bg-[#111113] relative overflow-hidden group"
+          >
+            {/* Ambient blurred glow in background */}
+            <div className="absolute right-0 top-0 w-32 h-32 bg-[#1DB954]/10 rounded-full blur-3xl pointer-events-none" />
+            
+            {/* Retro-Modern Spinning Vinyl Record Artwork */}
+            <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-zinc-800/80 flex-shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.6)] relative bg-black flex items-center justify-center p-[2px]">
+              {/* Outer vinyl groove rings */}
+              <div className="absolute inset-0 rounded-full border border-white/5 pointer-events-none scale-[0.88]" />
+              <div className="absolute inset-0 rounded-full border border-white/5 pointer-events-none scale-[0.74]" />
+              <div className="absolute inset-0 rounded-full border border-white/10 pointer-events-none scale-[0.60]" />
+              
+              {/* Spinning vinyl content */}
+              <motion.div
+                animate={isPlaying ? { rotate: 360 } : { rotate: 0 }}
+                transition={{
+                  repeat: isPlaying ? Infinity : 0,
+                  duration: isPlaying ? 12 : 0.6,
+                  ease: "linear"
+                }}
+                className="w-full h-full rounded-full overflow-hidden relative"
+              >
+                <img
+                  src={currentPlayingTrack.artworkUrl || `https://img.youtube.com/vi/${currentPlayingTrack.videoId}/mqdefault.jpg`}
+                  alt={currentPlayingTrack.title}
+                  className="w-full h-full object-cover rounded-full"
+                  referrerPolicy="no-referrer"
+                />
+                
+                {/* Vinyl Center spindle hole and label */}
+                <div className="absolute inset-0 m-auto w-4 h-4 bg-zinc-950 rounded-full border-2 border-zinc-800 shadow-inner flex items-center justify-center">
+                  <div className="w-1.5 h-1.5 bg-zinc-700 rounded-full border border-zinc-500" />
+                </div>
+              </motion.div>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <span className="text-[8px] font-black tracking-widest text-[#1DB954] uppercase bg-[#1DB954]/10 border border-[#1DB954]/20 px-2 py-0.5 rounded-full inline-block mb-1">
+                Active Session
+              </span>
+              <h5 className="text-sm font-bold text-white truncate" title={currentPlayingTrack.title}>
+                {currentPlayingTrack.title}
+              </h5>
+              <p className="text-xs text-zinc-400 font-medium truncate mt-0.5" title={currentPlayingTrack.artist}>
+                {currentPlayingTrack.artist}
+              </p>
+            </div>
+            
+            {/* Highly Creative Glowing Equalizer Soundwave Visualizer */}
+            <div className="flex items-end justify-center gap-[3px] h-9 px-2.5 bg-black/40 rounded-xl border border-white/5 min-w-[76px]">
+              {[
+                { duration: 0.9, delay: 0.1, heights: [6, 24, 10, 32, 6] },
+                { duration: 1.2, delay: 0.3, heights: [10, 18, 30, 8, 10] },
+                { duration: 0.8, delay: 0.0, heights: [4, 32, 14, 20, 4] },
+                { duration: 1.3, delay: 0.4, heights: [14, 8, 26, 12, 14] },
+                { duration: 1.0, delay: 0.2, heights: [8, 22, 12, 30, 8] },
+                { duration: 1.1, delay: 0.5, heights: [12, 28, 6, 18, 12] },
+                { duration: 0.9, delay: 0.6, heights: [6, 16, 24, 10, 6] },
+                { duration: 0.7, delay: 0.1, heights: [8, 20, 12, 26, 8] },
+              ].map((bar, i) => (
+                <motion.span
+                  key={i}
+                  animate={isPlaying ? { height: bar.heights } : { height: 4 }}
+                  transition={{
+                    duration: isPlaying ? bar.duration : 0.3,
+                    delay: isPlaying ? bar.delay : 0,
+                    repeat: isPlaying ? Infinity : 0,
+                    repeatType: "reverse",
+                    ease: "easeInOut",
+                  }}
+                  className="w-[3px] bg-gradient-to-t from-[#1DB954] to-emerald-300 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.5)]"
+                />
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* Queue List */}
       <div className="flex flex-col gap-2">
+        <div className="text-[10px] font-extrabold uppercase tracking-widest text-white/40 font-mono mb-1.5 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 bg-white/20 rounded-full" /> Upcoming Queue ({queue.length})
+        </div>
         {queue.length === 0 ? (
           <div className="py-12 border border-dashed border-white/10 rounded-2xl text-center flex flex-col items-center justify-center gap-2">
             <Music className="w-6 h-6 text-white/20" />
@@ -480,7 +649,7 @@ export function QueuePanel({ queue, setQueue, onPlayNextImmediate, currentPlayin
                       <button
                         onClick={() => moveUp(index)}
                         disabled={index === 0}
-                        className="p-1.5 text-white/40 hover:text-white disabled:text-white/10 disabled:cursor-not-allowed hover:bg-white/10 rounded transition-all"
+                        className="hidden sm:inline-flex p-1.5 text-white/40 hover:text-white disabled:text-white/10 disabled:cursor-not-allowed hover:bg-white/10 rounded transition-all"
                         title="Move Up"
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
@@ -490,7 +659,7 @@ export function QueuePanel({ queue, setQueue, onPlayNextImmediate, currentPlayin
                       <button
                         onClick={() => moveDown(index)}
                         disabled={index === queue.length - 1}
-                        className="p-1.5 text-white/40 hover:text-white disabled:text-white/10 disabled:cursor-not-allowed hover:bg-white/10 rounded transition-all"
+                        className="hidden sm:inline-flex p-1.5 text-white/40 hover:text-white disabled:text-white/10 disabled:cursor-not-allowed hover:bg-white/10 rounded transition-all"
                         title="Move Down"
                       >
                         <ArrowDown className="w-3.5 h-3.5" />

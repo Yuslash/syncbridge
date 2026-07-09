@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Music, Youtube, Link2, Search, Zap, Play, Loader2, Clipboard } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { MatchedTrack } from "../types";
+import { MatchedTrack, cleanYouTubeMetadata } from "../types";
 
 interface QuickPlayPanelProps {
   onPlayTrack: (track: MatchedTrack) => void;
@@ -91,10 +91,11 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
         }
 
         const data = await response.json();
+        const cleaned = cleanYouTubeMetadata(data.title, data.artist);
         const track: MatchedTrack = {
           id: `quick_${Date.now()}`,
-          title: data.title,
-          artist: data.artist,
+          title: cleaned.title,
+          artist: cleaned.artist,
           durationMs: data.durationMs,
           artworkUrl: data.artworkUrl,
           videoId: data.videoId,
@@ -174,10 +175,11 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
   };
 
   const handleSelectSuggestion = (suggestion: any) => {
+    const cleaned = cleanYouTubeMetadata(suggestion.title, suggestion.artistName);
     const track: MatchedTrack = {
       id: `quick_${Date.now()}`,
-      title: suggestion.title,
-      artist: suggestion.artistName,
+      title: cleaned.title,
+      artist: cleaned.artist,
       durationMs: suggestion.durationMs,
       artworkUrl: suggestion.thumbnailUrl,
       videoId: suggestion.videoId,
@@ -192,10 +194,10 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
   };
 
   return (
-    <div className="vision-glass rounded-3xl p-6 md:p-8 relative overflow-hidden flex flex-col gap-5">
+    <div className="vision-glass rounded-2xl p-4 sm:p-6 relative overflow-hidden flex flex-col gap-4">
       <div className="absolute right-0 top-0 w-80 h-80 bg-white/5 rounded-full blur-3xl pointer-events-none" />
       
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1">
         <label className="text-xs font-bold uppercase tracking-[0.2em] text-white/60 block font-sans">
           Quick Song Play
         </label>
@@ -205,11 +207,11 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
       </div>
 
       <div className="flex flex-col gap-3">
-        <div className="flex flex-col md:flex-row gap-3">
-          <div className="relative flex-1">
+        <div className="flex flex-col md:flex-row gap-3 items-stretch">
+          <div className="relative flex-1 h-12 sm:h-14">
             <input
               type="text"
-              className="w-full h-14 vision-glass-input rounded-2xl px-5 pl-12 pr-16 text-sm text-[#fafafa] placeholder-white/30 font-medium focus:outline-none transition-all"
+              className="w-full h-full vision-glass-input rounded-2xl px-5 pl-12 pr-16 text-sm text-[#fafafa] placeholder-white/30 font-medium focus:outline-none transition-all"
               placeholder="Enter song name or paste link..."
               value={inputValue}
               onChange={(e) => {
@@ -245,7 +247,7 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
           <button
             onClick={handleSearchOrPasteAndPlay}
             disabled={searching || isLoadingSong}
-            className="h-14 px-6 md:px-8 bg-[#10B981] hover:bg-[#059669] text-black font-extrabold rounded-2xl transition-all flex items-center justify-center gap-2 flex-shrink-0 cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(16,185,129,0.25)]"
+            className="h-12 sm:h-14 px-6 md:px-8 bg-[#10B981] hover:bg-[#059669] text-black font-extrabold rounded-2xl transition-all flex items-center justify-center gap-2 flex-shrink-0 cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(16,185,129,0.25)]"
           >
             {searching || isLoadingSong ? (
               <>

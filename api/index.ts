@@ -529,6 +529,54 @@ interface YouTubeResult {
 }
 
 /**
+ * Finds the index of the matching closing brace '}' in a JSON/JS string.
+ * Accounts for nested braces, escaped characters, and string literals.
+ */
+function findClosingBraceIndex(str: string, startIndex: number): number {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let stringChar = '"';
+  
+  for (let i = startIndex; i < str.length; i++) {
+    const char = str[i];
+    
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    
+    if (char === '\\') {
+      escape = true;
+      continue;
+    }
+    
+    if (inString) {
+      if (char === stringChar) {
+        inString = false;
+      }
+      continue;
+    }
+    
+    if (char === '"' || char === "'" || char === "`") {
+      inString = true;
+      stringChar = char;
+      continue;
+    }
+    
+    if (char === '{') {
+      depth++;
+    } else if (char === '}') {
+      depth--;
+      if (depth === 0) {
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
+/**
  * Robust HTML backup scraper when youtube-sr internally crashes or breaks due to layout updates.
  * Fetches the raw search page from YouTube and parses ytInitialData or falls back to robust regexes.
  */
@@ -551,22 +599,31 @@ async function fallbackSearchYouTube(query: string): Promise<YouTubeResult[]> {
     const html = await response.text();
     const results: YouTubeResult[] = [];
 
-    // Safe extraction of ytInitialData JSON from HTML source
+    // Safe extraction of ytInitialData JSON from HTML source using brace counting
     let parsedData: any = null;
-    const initialDataMarkers = ["ytInitialData = ", "ytInitialData="];
+    const initialDataMarkers = [
+      "window['ytInitialData'] =", 
+      "window[\"ytInitialData\"] =", 
+      "var ytInitialData =", 
+      "ytInitialData = ", 
+      "ytInitialData="
+    ];
+    
     for (const marker of initialDataMarkers) {
       const startIdx = html.indexOf(marker);
       if (startIdx !== -1) {
-        const dataStart = html.substring(startIdx + marker.length);
-        const endIdx = dataStart.indexOf(";</script>");
-        const finalEndIdx = endIdx !== -1 ? endIdx : dataStart.indexOf(";");
-        if (finalEndIdx !== -1) {
-          try {
-            const jsonStr = dataStart.substring(0, finalEndIdx).trim();
-            parsedData = JSON.parse(jsonStr);
-            break;
-          } catch (e) {
-            // Quiet fail, test next marker or method
+        const firstBraceIdx = html.indexOf("{", startIdx + marker.length);
+        if (firstBraceIdx !== -1) {
+          const closingBraceIdx = findClosingBraceIndex(html, firstBraceIdx);
+          if (closingBraceIdx !== -1) {
+            try {
+              const jsonStr = html.substring(firstBraceIdx, closingBraceIdx + 1).trim();
+              parsedData = JSON.parse(jsonStr);
+              console.log("[YouTube Fallback Scraper] Successfully parsed ytInitialData JSON via brace counting!");
+              break;
+            } catch (e) {
+              // Quiet fail and try the next marker
+            }
           }
         }
       }
@@ -615,9 +672,66 @@ async function fallbackSearchYouTube(query: string): Promise<YouTubeResult[]> {
       }
     }
 
-    // Secondary emergency regex matching if JSON schema structures changed or failed to extract candidates
+    // Secondary emergency sub-block parsing: Scan the entire HTML for raw `"videoRenderer"` structures!
+    // This is incredibly resilient against YouTube schema changes as long as some JSON remains.
     if (results.length === 0) {
-      console.log("[YouTube Fallback Scraper] JSON extractor returned empty; evaluating emergency HTML regexes");
+      console.log("[YouTube Fallback Scraper] ytInitialData path navigation empty/failed; evaluating raw videoRenderer sub-blocks");
+      let searchIdx = 0;
+      const vrMarker = '"videoRenderer"';
+      while (true) {
+        const vrIdx = html.indexOf(vrMarker, searchIdx);
+        if (vrIdx === -1) break;
+        searchIdx = vrIdx + vrMarker.length;
+        
+        // Find opening brace associated with videoRenderer
+        const braceIdx = html.indexOf("{", vrIdx);
+        if (braceIdx !== -1 && braceIdx < vrIdx + 30) {
+          const closingIdx = findClosingBraceIndex(html, braceIdx);
+          if (closingIdx !== -1) {
+            try {
+              const jsonStr = html.substring(braceIdx, closingIdx + 1).trim();
+              const vr = JSON.parse(jsonStr);
+              if (vr && vr.videoId) {
+                const id = vr.videoId;
+                const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || "Unknown Track";
+                const channel = vr.ownerText?.runs?.[0]?.text || vr.shortBylineText?.runs?.[0]?.text || "Unknown Channel";
+                const lengthStr = vr.lengthText?.simpleText || vr.lengthText?.runs?.[0]?.text || "";
+                const thumb = vr.thumbnail?.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${id}/mqdefault.jpg`;
+                
+                let durationMs = 180000;
+                if (lengthStr) {
+                  const parts = lengthStr.split(":").map(Number);
+                  if (parts.length === 2 && !parts.some(isNaN)) {
+                    durationMs = (parts[0] * 60 + parts[1]) * 1000;
+                  } else if (parts.length === 3 && !parts.some(isNaN)) {
+                    durationMs = (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
+                  }
+                }
+
+                if (!results.some(r => r.videoId === id)) {
+                  results.push({
+                    videoId: id,
+                    title,
+                    artistName: channel,
+                    duration: lengthStr || "3:00",
+                    durationMs,
+                    thumbnailUrl: thumb,
+                    videoUrl: `https://www.youtube.com/watch?v=${id}`,
+                    isShort: durationMs < 75000
+                  });
+                }
+              }
+            } catch (e) {
+              // Ignore single block parse error and proceed to search next
+            }
+          }
+        }
+      }
+    }
+
+    // Tertiary emergency regex matching if both JSON structures failed to extract candidates
+    if (results.length === 0) {
+      console.log("[YouTube Fallback Scraper] All JSON extractors returned empty; evaluating emergency HTML regexes");
       const videoIdRegex = /"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"/g;
       const videoIds: string[] = [];
       let rxMatch;
@@ -640,10 +754,14 @@ async function fallbackSearchYouTube(query: string): Promise<YouTubeResult[]> {
         }
       }
 
+      // Generate a friendly name based on query as title instead of raw ID
+      const queryCleaned = query.replace(/lyrics|official video|audio|remix|hd|music video|official/gi, "").trim();
+      const fallbackTitle = queryCleaned ? queryCleaned.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") : "Matched Track";
+
       for (const id of videoIds) {
         results.push({
           videoId: id,
-          title: `YouTube Match Track [${id}]`,
+          title: `${fallbackTitle} [Matched Video]`,
           artistName: "YouTube Artist",
           duration: "3:30",
           durationMs: 210000,

@@ -137,12 +137,15 @@ export default function App() {
   const [showPlayerVideoPreview, setShowPlayerVideoPreview] = useState(false);
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
   const [isInsideIframe, setIsInsideIframe] = useState(false);
+  const [ytPlayerState, setYtPlayerState] = useState<number>(-1);
+  const hasReceivedYtMessages = React.useRef(false);
   const playerIframeRef = React.useRef<HTMLIFrameElement | null>(null);
 
   // NEW Quick Play & Queue States
   const [activeTab, setActiveTab] = useState<'converter' | 'player'>('converter');
   const [homeTab, setHomeTab] = useState<'quick' | 'playlist'>('quick'); 
   const [queue, setQueue] = useState<MatchedTrack[]>([]);
+  const [previousTracks, setPreviousTracks] = useState<MatchedTrack[]>([]);
   const [activeSingleTrack, setActiveSingleTrack] = useState<MatchedTrack | null>(null);
   const [isLoadingSong, setIsLoadingSong] = useState(false);
   const [showChangeSongModal, setShowChangeSongModal] = useState(false);
@@ -161,7 +164,21 @@ export default function App() {
     return tracks.find(t => t.id === activePlayingTrackId) || null;
   }, [tracks, activePlayingTrackId, activeSingleTrack]);
 
+  // Reset YouTube sync flags when track changes
+  useEffect(() => {
+    hasReceivedYtMessages.current = false;
+    setYtPlayerState(-1);
+  }, [activePlayingTrackId]);
+
   const handlePlayTrack = (track: MatchedTrack, fromPlaylistTracks?: MatchedTrack[]) => {
+    // Save current track to previous before playing new one
+    if (currentPlayingTrack && currentPlayingTrack.id !== track.id) {
+      setPreviousTracks(prev => {
+        if (prev.length > 0 && prev[prev.length - 1].id === currentPlayingTrack.id) return prev;
+        return [...prev, currentPlayingTrack];
+      });
+    }
+
     setActiveSingleTrack(track);
     setActivePlayingTrackId(track.id);
     setIsPlaying(true);
@@ -173,9 +190,64 @@ export default function App() {
     if (fromPlaylistTracks) {
       const idx = fromPlaylistTracks.findIndex(t => t.id === track.id);
       if (idx !== -1) {
+        const past = fromPlaylistTracks.slice(0, idx);
+        setPreviousTracks(past);
         const upcoming = fromPlaylistTracks.slice(idx + 1);
         setQueue(upcoming);
       }
+    }
+  };
+
+  const handlePlayPreviousTrack = (track: MatchedTrack) => {
+    const idx = previousTracks.findIndex(t => t.id === track.id);
+    if (idx !== -1) {
+      const past = previousTracks.slice(0, idx);
+      const toMoveToQueue = previousTracks.slice(idx + 1);
+      
+      if (currentPlayingTrack) {
+        setQueue(prev => [currentPlayingTrack, ...prev]);
+      }
+      if (toMoveToQueue.length > 0) {
+        setQueue(prev => [...toMoveToQueue, ...prev]);
+      }
+      
+      setPreviousTracks(past);
+      
+      setActiveSingleTrack(track);
+      setActivePlayingTrackId(track.id);
+      setIsPlaying(true);
+      setCurrentTimeSecs(0);
+      const estSecs = track.durationMs ? Math.floor(track.durationMs / 1000) : 180;
+      setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
+    }
+  };
+
+  const handlePlayUpcomingTrack = (track: MatchedTrack) => {
+    const idx = queue.findIndex(t => t.id === track.id);
+    if (idx !== -1) {
+      const skippedFromQueue = queue.slice(0, idx);
+      const remainingUpcoming = queue.slice(idx + 1);
+      
+      if (currentPlayingTrack) {
+        setPreviousTracks(prev => {
+          let updated = [...prev, currentPlayingTrack];
+          if (skippedFromQueue.length > 0) {
+            updated = [...updated, ...skippedFromQueue];
+          }
+          return updated;
+        });
+      } else if (skippedFromQueue.length > 0) {
+        setPreviousTracks(prev => [...prev, ...skippedFromQueue]);
+      }
+      
+      setQueue(remainingUpcoming);
+      
+      setActiveSingleTrack(track);
+      setActivePlayingTrackId(track.id);
+      setIsPlaying(true);
+      setCurrentTimeSecs(0);
+      const estSecs = track.durationMs ? Math.floor(track.durationMs / 1000) : 180;
+      setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
     }
   };
 
@@ -190,6 +262,14 @@ export default function App() {
   const handlePlayNextFromQueue = () => {
     if (queue.length > 0) {
       const nextTrack = queue[0];
+      
+      if (currentPlayingTrack) {
+        setPreviousTracks(prev => {
+          if (prev.length > 0 && prev[prev.length - 1].id === currentPlayingTrack.id) return prev;
+          return [...prev, currentPlayingTrack];
+        });
+      }
+
       setQueue(prev => prev.slice(1));
       
       setActiveSingleTrack(nextTrack);
@@ -225,6 +305,12 @@ export default function App() {
     }
     const nextTrack = playableTracks[nextIndex];
     if (nextTrack) {
+      if (currentPlayingTrack) {
+        setPreviousTracks(prev => {
+          if (prev.length > 0 && prev[prev.length - 1].id === currentPlayingTrack.id) return prev;
+          return [...prev, currentPlayingTrack];
+        });
+      }
       setActiveSingleTrack(nextTrack);
       setActivePlayingTrackId(nextTrack.id);
       setIsPlaying(true);
@@ -235,6 +321,26 @@ export default function App() {
   };
 
   const handleSkipPrev = () => {
+    // 1. Check if we have history we can skip back to!
+    if (previousTracks.length > 0) {
+      const prevTrack = previousTracks[previousTracks.length - 1];
+      
+      if (currentPlayingTrack) {
+        setQueue(prev => [currentPlayingTrack, ...prev]);
+      }
+      
+      setPreviousTracks(prev => prev.slice(0, -1));
+      
+      setActiveSingleTrack(prevTrack);
+      setActivePlayingTrackId(prevTrack.id);
+      setIsPlaying(true);
+      setCurrentTimeSecs(0);
+      const estSecs = prevTrack.durationMs ? Math.floor(prevTrack.durationMs / 1000) : 180;
+      setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
+      return;
+    }
+
+    // 2. Fallback to playableTracks previous item
     if (playableTracks.length === 0) return;
     let currentIndex = playableTracks.findIndex(t => t.id === activePlayingTrackId);
     let prevIndex = 0;
@@ -248,6 +354,9 @@ export default function App() {
     }
     const prevTrack = playableTracks[prevIndex];
     if (prevTrack) {
+      if (currentPlayingTrack) {
+        setQueue(prev => [currentPlayingTrack, ...prev]);
+      }
       setActiveSingleTrack(prevTrack);
       setActivePlayingTrackId(prevTrack.id);
       setIsPlaying(true);
@@ -353,6 +462,15 @@ export default function App() {
         if (data && data.event === "onStateChange") {
           const playerState = data.info;
           // PlayerStates: -1 (unstarted), 0 (ended), 1 (playing), 2 (paused), 3 (buffering), 5 (video cued)
+          setYtPlayerState(playerState);
+          hasReceivedYtMessages.current = true;
+
+          if (playerState === 1) {
+            setIsPlaying(true);
+          } else if (playerState === 2) {
+            setIsPlaying(false);
+          }
+
           if (playerState === 0) {
             console.log("[YouTube Embed Listener] Song ended naturally. Triggering next track.");
             if (repeatMode === 'one') {
@@ -371,6 +489,28 @@ export default function App() {
               playbackProgressTimerNextTrigger();
             }
           }
+        } else if (data && data.info) {
+          const info = data.info;
+          hasReceivedYtMessages.current = true;
+          // Support both data.event === "infoDelivery" and direct info message payloads
+          if (typeof info.duration === "number" && info.duration > 0) {
+            setTrackDurationSecs(Math.round(info.duration));
+          } else if (typeof info.videoData?.duration === "number" && info.videoData.duration > 0) {
+            setTrackDurationSecs(Math.round(info.videoData.duration));
+          }
+
+          if (typeof info.currentTime === "number") {
+            const ytTime = Math.round(info.currentTime);
+            setCurrentTimeSecs(ytTime);
+            // If YouTube current time is greater than trackDurationSecs, dynamically expand the duration!
+            if (ytTime > trackDurationSecs) {
+              setTrackDurationSecs(ytTime + 10);
+            }
+          }
+
+          if (typeof info.playerState === "number") {
+            setYtPlayerState(info.playerState);
+          }
         }
       } catch (e) {
         // Suppress parsing errors for other non-YouTube messages safely
@@ -386,7 +526,10 @@ export default function App() {
   // Local counting timer clock for 100% responsive timeline slider updates
   useEffect(() => {
     let timerId: any = null;
-    if (isPlaying && activePlayingTrackId) {
+    // Only tick locally if the player is set to play AND we either haven't received YouTube API messages yet, OR the YouTube player state is actively playing (1)
+    const shouldTick = isPlaying && activePlayingTrackId && (!hasReceivedYtMessages.current || ytPlayerState === 1);
+
+    if (shouldTick) {
       timerId = setInterval(() => {
         setCurrentTimeSecs(prev => {
           // Track plays for full YouTube duration. Grace buffer of 15s to guarantee no clipping!
@@ -411,7 +554,7 @@ export default function App() {
     return () => {
       if (timerId) clearInterval(timerId);
     };
-  }, [isPlaying, activePlayingTrackId, trackDurationSecs, repeatMode, playableTracks]);
+  }, [isPlaying, activePlayingTrackId, trackDurationSecs, repeatMode, playableTracks, ytPlayerState]);
 
   // Volume and mute controls synchronizer
   useEffect(() => {
@@ -437,6 +580,13 @@ export default function App() {
       );
     }
   }, [isPlaying, activePlayingTrackId]);
+
+  // Automatically pause the main player when the preview video modal is open to prevent double audio
+  useEffect(() => {
+    if (previewVideo) {
+      setIsPlaying(false);
+    }
+  }, [previewVideo]);
 
   useEffect(() => {
     setIsInsideIframe(window.self !== window.top);
@@ -1126,232 +1276,17 @@ export default function App() {
               className="w-full"
             >
               {/* THE ACTIVE SESSION PLAYER & QUEUE DASHBOARD */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 py-2">
-                {/* Left: Active Player Details */}
-                <div className="lg:col-span-5 flex flex-col gap-6">
-                  {currentPlayingTrack ? (
-                    <div className="vision-glass rounded-3xl p-6 md:p-8 relative overflow-hidden flex flex-col items-center text-center gap-6">
-                      <div className="absolute right-0 top-0 w-64 h-64 bg-white/5 rounded-full blur-3xl pointer-events-none" />
-                      
-                      {/* Album / Vinyl Art revolving */}
-                      <div className="relative w-48 h-48 md:w-56 md:h-56 rounded-full bg-black border-4 border-white/10 shadow-2xl overflow-hidden flex items-center justify-center group flex-shrink-0">
-                        {currentPlayingTrack.artworkUrl ? (
-                          <img
-                            src={currentPlayingTrack.artworkUrl}
-                            alt={currentPlayingTrack.title}
-                            className={`w-full h-full object-cover transition-transform select-none ${
-                              isPlaying ? "spin-slow" : "spin-slow spin-paused"
-                            }`}
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <Music className="w-16 h-16 text-white" />
-                        )}
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,rgba(255,255,255,0.06)_40%,transparent_50%,rgba(255,255,255,0.08)_60%,transparent_70%)] pointer-events-none rounded-full" />
-                        <div className="absolute w-12 h-12 bg-black border-4 border-white/10 rounded-full flex items-center justify-center z-10">
-                          <div className="w-3 h-3 bg-white rounded-full" />
-                        </div>
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex flex-col gap-1.5 w-full min-w-0">
-                        <h3 className="text-lg md:text-xl font-bold text-white truncate" title={currentPlayingTrack.title}>
-                          {currentPlayingTrack.title}
-                        </h3>
-                        <p className="text-xs md:text-sm text-white/60 truncate" title={currentPlayingTrack.artist}>
-                          {currentPlayingTrack.artist}
-                        </p>
-                        {currentPlayingTrack.album && (
-                          <p className="text-[10px] text-white/40 font-medium truncate uppercase tracking-wider font-mono">
-                            {currentPlayingTrack.album}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Badges / Change Match button */}
-                      <div className="flex items-center gap-3">
-                        <span className="inline-flex items-center gap-1.5 text-[9px] text-white font-bold bg-white/10 border border-white/20 px-2.5 py-1 rounded-xl uppercase tracking-wider">
-                          <Youtube className="w-3.5 h-3.5 text-red-500 fill-red-500" /> YouTube Match
-                        </span>
-
-                        <button
-                          onClick={() => {
-                            setChangeSearchQuery(`${currentPlayingTrack.title} ${currentPlayingTrack.artist}`);
-                            setShowChangeSongModal(true);
-                            fetchChangeSuggestions(`${currentPlayingTrack.title} ${currentPlayingTrack.artist}`);
-                          }}
-                          className="inline-flex items-center gap-1.5 text-[9px] text-white/80 hover:text-white font-bold bg-white/5 hover:bg-white/10 border border-white/10 px-2.5 py-1 rounded-xl uppercase tracking-wider cursor-pointer transition-all"
-                          title="Correct or change YouTube video match"
-                        >
-                          <RefreshCw className="w-3 h-3 animate-spin-slow" /> Change Match
-                        </button>
-                      </div>
-
-                      {/* Timeline sliders replicated */}
-                      <div className="w-full flex flex-col gap-2 mt-2">
-                        {(() => {
-                          const displayTimeSecs = Math.min(currentTimeSecs, trackDurationSecs);
-                          return (
-                            <>
-                              <div className="flex-1 relative group py-1">
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max={trackDurationSecs}
-                                  value={displayTimeSecs}
-                                  onChange={(e) => handleTimelineChange(parseInt(e.target.value, 10))}
-                                  className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white outline-none hover:bg-white/20 transition-all"
-                                  style={{
-                                    background: `linear-gradient(to right, #ffffff ${
-                                      (displayTimeSecs / trackDurationSecs) * 100
-                                    }%, rgba(255,255,255,0.1) ${(displayTimeSecs / trackDurationSecs) * 100}%)`,
-                                  }}
-                                />
-                              </div>
-                              <div className="flex justify-between text-[10px] font-mono text-white/40">
-                                <span>
-                                  {Math.floor(displayTimeSecs / 60)}:
-                                  {String(displayTimeSecs % 60).padStart(2, "0")}
-                                </span>
-                                <span>
-                                  {Math.floor(trackDurationSecs / 60)}:
-                                  {String(trackDurationSecs % 60).padStart(2, "0")}
-                                </span>
-                              </div>
-                            </>
-                          );
-                        })()}
-                      </div>
-
-                      {/* Mid playback control orb buttons */}
-                      <div className="flex items-center gap-5 mt-1">
-                        <button
-                          onClick={() => setIsShuffled(!isShuffled)}
-                          className={`p-2 rounded-full transition-colors relative cursor-pointer ${
-                            isShuffled ? "text-white bg-white/10" : "text-white/40 hover:text-white"
-                          }`}
-                          title="Shuffle"
-                        >
-                          <Shuffle className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          onClick={handleSkipPrev}
-                          className="p-2 text-white/60 hover:text-white transition-colors cursor-pointer"
-                          title="Previous"
-                        >
-                          <SkipBack className="w-5 h-5 fill-current" />
-                        </button>
-
-                        <button
-                          onClick={() => setIsPlaying(!isPlaying)}
-                          className="w-14 h-14 rounded-full bg-white text-black flex items-center justify-center shadow-lg cursor-pointer hover:scale-105 active:scale-95 transition-all"
-                        >
-                          {isPlaying ? (
-                            <Pause className="w-5 h-5 fill-current text-black" />
-                          ) : (
-                            <Play className="w-5 h-5 fill-current ml-1 text-black" />
-                          )}
-                        </button>
-
-                        <button
-                          onClick={handleSkipNext}
-                          className="p-2 text-white/60 hover:text-white transition-colors cursor-pointer"
-                          title="Next"
-                        >
-                          <SkipForward className="w-5 h-5 fill-current" />
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            if (repeatMode === 'all') setRepeatMode('one');
-                            else if (repeatMode === 'one') setRepeatMode('none');
-                            else setRepeatMode('all');
-                          }}
-                          className={`p-2 rounded-full transition-colors relative cursor-pointer ${
-                            repeatMode !== 'none' ? "text-white bg-white/10" : "text-white/40 hover:text-white"
-                          }`}
-                          title="Repeat"
-                        >
-                          <Repeat className="w-4 h-4" />
-                          {repeatMode === 'one' && (
-                            <span className="absolute -top-0.5 -right-0.5 text-[7px] font-bold bg-white text-black rounded-full w-3.5 h-3.5 flex items-center justify-center">1</span>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Live video frame toggle indicator */}
-                      <div className="w-full border-t border-white/10 pt-4 flex flex-col gap-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-white/40">Live Video Preview</span>
-                          <button
-                            onClick={() => setShowPlayerVideoPreview(!showPlayerVideoPreview)}
-                            className={`text-xs font-semibold px-3 py-1 rounded-lg border transition-all cursor-pointer ${
-                              showPlayerVideoPreview 
-                                ? "bg-white/10 text-white border-white/20" 
-                                : "bg-transparent text-white/40 border-white/10 hover:text-white"
-                            }`}
-                          >
-                            {showPlayerVideoPreview ? "Hide Preview" : "Show Preview"}
-                          </button>
-                        </div>
-
-                        <AnimatePresence>
-                          {showPlayerVideoPreview && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: "auto" }}
-                              exit={{ opacity: 0, height: 0 }}
-                              className="overflow-hidden rounded-2xl border border-white/10 shadow-inner bg-black/40"
-                            >
-                              <div className="aspect-video w-full relative">
-                                <iframe
-                                  ref={playerIframeRef}
-                                  src={`https://www.youtube.com/embed/${currentPlayingTrack.videoId}?enablejsapi=1&controls=1&autoplay=${isPlaying ? 1 : 0}&volume=${playbackVolume}&mute=${isMuted ? 1 : 0}&origin=${window.location.origin}`}
-                                  title="Live Audio Playback Video Feed"
-                                  className="w-full h-full border-0 absolute inset-0"
-                                  allow="autoplay; encrypted-media; picture-in-picture"
-                                />
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="vision-glass rounded-3xl p-12 shadow-2xl text-center flex flex-col items-center justify-center gap-4">
-                      <div className="p-4 bg-white/10 border border-white/10 rounded-full text-white">
-                        <Music className="w-8 h-8" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">No song playing</h4>
-                        <p className="text-xs text-white/40 mt-1 max-w-xs mx-auto">
-                          Playback is idle. Search a song or load a saved playlist to kickstart your listening session!
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Quick Play panel */}
-                  <QuickPlayPanel 
-                    onPlayTrack={(track) => handlePlayTrack(track)} 
-                    isLoadingSong={isLoadingSong}
-                    setIsLoadingSong={setIsLoadingSong}
-                  />
-                </div>
-
-                {/* Right: Interactive Session Queue */}
-                <div className="lg:col-span-7 flex flex-col">
-                  <QueuePanel
-                    queue={queue}
-                    setQueue={setQueue}
-                    onPlayNextImmediate={(track) => {
-                      setQueue(prev => prev.filter(t => t.id !== track.id));
-                      handlePlayTrack(track);
-                    }}
-                    currentPlayingTrack={currentPlayingTrack}
-                  />
-                </div>
+              <div className="max-w-4xl mx-auto w-full flex flex-col py-2">
+                <QueuePanel
+                  queue={queue}
+                  setQueue={setQueue}
+                  previousTracks={previousTracks}
+                  setPreviousTracks={setPreviousTracks}
+                  onPlayNextImmediate={handlePlayUpcomingTrack}
+                  onPlayPreviousTrack={handlePlayPreviousTrack}
+                  currentPlayingTrack={currentPlayingTrack}
+                  isPlaying={isPlaying}
+                />
               </div>
             </motion.div>
           ) : !playlistMeta && !isLoading ? (
@@ -2161,22 +2096,30 @@ export default function App() {
 
       </main>
 
-      {/* The real underlying YouTube IFrame API Player engine */}
+      {/* Underlying YouTube IFrame API Player engine with compact floating PIP visual feed toggle */}
       {currentPlayingTrack && (
         <motion.div
           animate={{
             width: isVideoFullscreen && showPlayerVideoPreview
               ? "100vw"
-              : 280,
+              : showPlayerVideoPreview 
+                ? (window.innerWidth < 768 ? 200 : 280) 
+                : 1,
             height: isVideoFullscreen && showPlayerVideoPreview
               ? "100vh"
-              : 158,
+              : showPlayerVideoPreview 
+                ? (window.innerWidth < 768 ? 113 : 158) 
+                : 1,
             bottom: isVideoFullscreen && showPlayerVideoPreview
               ? 0
-              : 96,
+              : showPlayerVideoPreview 
+                ? (window.innerWidth < 768 ? 180 : 96) 
+                : 0,
             right: isVideoFullscreen && showPlayerVideoPreview
               ? 0
-              : 16,
+              : showPlayerVideoPreview 
+                ? (window.innerWidth < 768 ? 12 : 16) 
+                : 0,
             borderRadius: isVideoFullscreen && showPlayerVideoPreview ? 0 : 16,
             borderWidth: isVideoFullscreen && showPlayerVideoPreview ? 0 : 2,
             borderColor: isVideoFullscreen && showPlayerVideoPreview ? "transparent" : "#1DB954",
@@ -2185,7 +2128,8 @@ export default function App() {
             pointerEvents: showPlayerVideoPreview ? "auto" : "none",
             boxShadow: isVideoFullscreen && showPlayerVideoPreview 
               ? "none" 
-              : "0 10px 40px rgba(0,0,0,0.5), 0 0 20px rgba(29,185,84,0.15)"
+              : "0 10px 40px rgba(0,0,0,0.5), 0 0 20px rgba(29,185,84,0.15)",
+            zIndex: showPlayerVideoPreview ? 50 : -999,
           }}
           transition={{
             type: "spring",
@@ -2194,7 +2138,7 @@ export default function App() {
             mass: 0.8
           }}
           style={{ position: "fixed" }}
-          className="bg-black overflow-hidden z-50 shadow-2xl"
+          className="bg-black overflow-hidden shadow-2xl"
         >
           {/* Visual indicator stamp overlay on video tray */}
           {showPlayerVideoPreview && (
@@ -2203,27 +2147,43 @@ export default function App() {
             </div>
           )}
           
-          {/* Fullscreen control overlay buttons */}
+          {/* Fullscreen & Close controls overlay buttons directly on the video box */}
           {showPlayerVideoPreview && (
             <div key="live-feed-controls" className="absolute top-1.5 right-1.5 flex gap-1.5 z-10">
               <button
                 onClick={() => setIsVideoFullscreen(!isVideoFullscreen)}
                 className="bg-black/80 hover:bg-black/95 text-white hover:text-[#1DB954] p-1.5 rounded-lg border border-[#1DB954]/20 hover:border-[#1DB954]/55 shadow-md flex items-center justify-center transition-all cursor-pointer active:scale-90"
-                title={isVideoFullscreen ? "Exit Fullscreen" : "Expand to Fullscreen Feed"}
+                title={isVideoFullscreen ? "Exit Fullscreen" : "Expand to Fullscreen"}
               >
                 {isVideoFullscreen ? (
-                  <Minimize2 className="w-3.5 h-3.5" />
+                  <Minimize2 className="w-3 h-3" />
                 ) : (
-                  <Maximize2 className="w-3.5 h-3.5" />
+                  <Maximize2 className="w-3 h-3" />
                 )}
               </button>
+              <button
+                onClick={() => setShowPlayerVideoPreview(false)}
+                className="bg-black/80 hover:bg-zinc-900 text-rose-400 hover:text-rose-300 p-1.5 rounded-lg border border-rose-500/20 hover:border-rose-500/40 shadow-md flex items-center justify-center transition-all cursor-pointer active:scale-90"
+                title="Hide Video Feed"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          {/* Tap to Play / Autoplay Block Overlay */}
+          {showPlayerVideoPreview && ytPlayerState !== 1 && (
+            <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center text-center p-3 gap-1.5 pointer-events-none z-[5]">
+              <Play className="w-6 h-6 text-[#1DB954] fill-[#1DB954] animate-pulse" />
+              <p className="text-[10px] font-black text-white uppercase tracking-wider">Tap Feed to Play / Sync</p>
+              <p className="text-[8px] text-zinc-500 font-medium leading-normal max-w-[200px]">Browser blocks autoplay. Click video to resume sync!</p>
             </div>
           )}
 
           <iframe
             key="core-youtube-player-iframe"
             ref={playerIframeRef}
-            src={`https://www.youtube.com/embed/${currentPlayingTrack.videoId}?enablejsapi=1&autoplay=1&controls=1&mute=0&cc_load_policy=0&iv_load_policy=3&hl=en&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.origin)}`}
+            src={`https://www.youtube.com/embed/${currentPlayingTrack.videoId}?enablejsapi=1&autoplay=1&controls=0&mute=0&cc_load_policy=0&iv_load_policy=3&hl=en&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.origin)}`}
             title="Syncify Premium Streaming Core"
             className="w-full h-full border-0 select-none"
             allow="autoplay; encrypted-media"
@@ -2290,9 +2250,6 @@ export default function App() {
                 </p>
                 {/* Visual indicator highlighting Youtube source match status */}
                 <div className="flex items-center gap-1.5 mt-1">
-                  <span className="inline-flex items-center gap-1 text-[8px] text-[#1DB954] font-bold bg-[#1DB954]/10 border border-[#1DB954]/20 px-1.5 py-0.5 rounded uppercase tracking-wide">
-                    <Youtube className="w-2.5 h-2.5 text-red-500 fill-red-500" /> YouTube Match
-                  </span>
                   <button
                     onClick={() => {
                       setChangeSearchQuery(`${currentPlayingTrack.title} ${currentPlayingTrack.artist}`);
@@ -2304,21 +2261,19 @@ export default function App() {
                   >
                     <RefreshCw className="w-2 h-2" /> Change
                   </button>
+                  <button
+                    onClick={() => setShowPlayerVideoPreview(!showPlayerVideoPreview)}
+                    className={`inline-flex items-center gap-1 text-[8px] font-bold border px-1.5 py-0.5 rounded uppercase tracking-wide cursor-pointer transition-all ${
+                      showPlayerVideoPreview
+                        ? "text-[#1DB954] bg-[#1DB954]/10 border-[#1DB954]/30"
+                        : "text-zinc-400 hover:text-white bg-zinc-850/20 border-zinc-700/50 hover:bg-zinc-800/40"
+                    }`}
+                    title="Toggle Floating Live Video Feed Screen"
+                  >
+                    <Radio className={`w-2 h-2 ${showPlayerVideoPreview ? 'animate-pulse' : ''}`} /> Feed
+                  </button>
                 </div>
               </div>
-
-              {/* Action to toggle the floating compact TV screen feed */}
-              <button
-                onClick={() => setShowPlayerVideoPreview(!showPlayerVideoPreview)}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
-                  showPlayerVideoPreview 
-                    ? "text-[#1DB954] bg-[#1DB954]/10 border border-[#1DB954]/20" 
-                    : "text-zinc-400 hover:text-white hover:bg-zinc-950 border border-transparent"
-                }`}
-                title="Toggle Live Video Feed Panel"
-              >
-                <Radio className={`w-3.5 h-3.5 ${showPlayerVideoPreview ? 'animate-pulse' : ''}`} />
-              </button>
             </div>
 
             {/* MIDDLE COMPARTMENT: Core playback, Frequency sound wave canvas, timeline progress slider */}

@@ -419,7 +419,7 @@ export function TrackRow({
               {/* Re-search query selector if they want to try another term */}
               <button 
                 onClick={() => setIsExpandingSearch(!isExpandingSearch)}
-                className="p-1.5 text-white/40 hover:text-white transition-colors rounded hover:bg-white/5"
+                className="hidden sm:inline-flex p-1.5 text-white/40 hover:text-white transition-colors rounded hover:bg-white/5"
                 title="Search options"
               >
                 <Search className="w-3.5 h-3.5" />
@@ -427,7 +427,7 @@ export function TrackRow({
               <button 
                 onClick={() => onSearchAgain(track.id)}
                 disabled={isSearchingRow}
-                className="p-1.5 text-white/40 hover:text-white transition-colors rounded hover:bg-white/5 disabled:opacity-50"
+                className="hidden sm:inline-flex p-1.5 text-white/40 hover:text-white transition-colors rounded hover:bg-white/5 disabled:opacity-50"
                 title="Retry auto-match search"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSearchingRow ? 'animate-spin' : ''}`} />
