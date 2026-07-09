@@ -414,8 +414,90 @@ export default function App() {
     }
   };
 
+  // Native Background HTML5 Audio Engine States
+  const [pipedAudioUrl, setPipedAudioUrl] = useState<string | null>(null);
+  const [isFetchingPipedAudio, setIsFetchingPipedAudio] = useState(false);
+  const [useNativeAudio, setUseNativeAudio] = useState(false);
+
+  const PIPED_INSTANCES = [
+    "https://api.piped.yt",
+    "https://pipedapi.kavin.rocks",
+    "https://piped-api.lunar.icu",
+    "https://pipedapi.tokhmi.xyz",
+    "https://pipedapi.ox7.at"
+  ];
+
+  // Helper to synchronize volume/mute controls between Native Audio and YouTube IFrame
+  const syncYouTubeVolume = (muted: boolean) => {
+    if (playerIframeRef.current) {
+      const targetVolume = muted ? 0 : playbackVolume;
+      playerIframeRef.current.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: "setVolume", args: [targetVolume] }),
+        "*"
+      );
+      playerIframeRef.current.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: muted ? "mute" : "unMute", args: [] }),
+        "*"
+      );
+    }
+  };
+
+  // Fetch direct background audio stream url via Piped API
+  const fetchPipedAudioStream = async (videoId: string) => {
+    setIsFetchingPipedAudio(true);
+    
+    for (const instance of PIPED_INSTANCES) {
+      try {
+        console.log(`[Background Audio] Fetching audio stream from: ${instance}/streams/${videoId}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s timeout per instance
+        
+        const response = await fetch(`${instance}/streams/${videoId}`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.audioStreams && data.audioStreams.length > 0) {
+            // Filter out m4a streams first because they are most universally supported across iOS Safari & Android Chrome
+            const m4aStream = data.audioStreams.find((s: any) => 
+              (s.mimeType && s.mimeType.includes("audio/mp4")) || 
+              (s.format && s.format.toLowerCase() === "m4a")
+            );
+            const chosenStream = m4aStream || data.audioStreams[0];
+            if (chosenStream && chosenStream.url) {
+              console.log(`[Background Audio] Successfully resolved direct stream:`, chosenStream.mimeType || chosenStream.format);
+              setPipedAudioUrl(chosenStream.url);
+              setUseNativeAudio(true);
+              setIsFetchingPipedAudio(false);
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`[Background Audio] Instance failed: ${instance}`, err);
+      }
+    }
+    
+    // Fallback to standard YouTube iframe audio playback if Piped is unavailable
+    console.log("[Background Audio] Piped stream retrieval failed. Falling back to native YouTube Iframe Audio.");
+    setPipedAudioUrl(null);
+    setUseNativeAudio(false);
+    setIsFetchingPipedAudio(false);
+  };
+
+  useEffect(() => {
+    if (currentPlayingTrack?.videoId) {
+      fetchPipedAudioStream(currentPlayingTrack.videoId);
+    } else {
+      setPipedAudioUrl(null);
+      setUseNativeAudio(false);
+    }
+  }, [currentPlayingTrack?.videoId]);
+
   // Background Audio & Media Session synchronization engine for mobile lockscreen/background play
-  const silentAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const nativeAudioRef = React.useRef<HTMLAudioElement | null>(null);
   const handleSkipNextRef = React.useRef(handleSkipNext);
   const handleSkipPrevRef = React.useRef(handleSkipPrev);
 
@@ -425,40 +507,26 @@ export default function App() {
     handleSkipPrevRef.current = handleSkipPrev;
   });
 
-  // Initialize continuous silent audio context to signal active background audio stream
+  // Initialize native HTML5 audio context and register media actions
   useEffect(() => {
-    const audio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==");
+    const audio = new Audio();
+    audio.crossOrigin = "anonymous";
+    nativeAudioRef.current = audio;
+
+    // Default continuous silent audio context to signal active background audio stream
+    audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
     audio.loop = true;
-    silentAudioRef.current = audio;
 
     // Register lockscreen physical/digital action handlers
     if ('mediaSession' in navigator) {
       navigator.mediaSession.setActionHandler('play', () => {
         console.log("[MediaSession] User triggered Lock Screen Play");
         setIsPlaying(true);
-        if (silentAudioRef.current) {
-          silentAudioRef.current.play().catch(e => console.log(e));
-        }
-        if (playerIframeRef.current?.contentWindow) {
-          playerIframeRef.current.contentWindow.postMessage(
-            JSON.stringify({ event: 'command', func: 'playVideo', args: [] }),
-            '*'
-          );
-        }
       });
 
       navigator.mediaSession.setActionHandler('pause', () => {
         console.log("[MediaSession] User triggered Lock Screen Pause");
         setIsPlaying(false);
-        if (silentAudioRef.current) {
-          silentAudioRef.current.pause();
-        }
-        if (playerIframeRef.current?.contentWindow) {
-          playerIframeRef.current.contentWindow.postMessage(
-            JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }),
-            '*'
-          );
-        }
       });
 
       navigator.mediaSession.setActionHandler('previoustrack', () => {
@@ -470,15 +538,110 @@ export default function App() {
         console.log("[MediaSession] User triggered Lock Screen Next");
         handleSkipNextRef.current();
       });
+
+      try {
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+          if (details.seekTime !== undefined && nativeAudioRef.current) {
+            console.log(`[MediaSession] Seek to ${details.seekTime}s`);
+            const targetTime = details.seekTime;
+            setCurrentTimeSecs(targetTime);
+            
+            if (useNativeAudio) {
+              nativeAudioRef.current.currentTime = targetTime;
+            }
+            if (playerIframeRef.current) {
+              playerIframeRef.current.contentWindow?.postMessage(
+                JSON.stringify({ event: "command", func: "seekTo", args: [targetTime, true] }),
+                "*"
+              );
+            }
+          }
+        });
+      } catch (e) {
+        console.warn("[MediaSession] SeekTo action handler registration failed:", e);
+      }
     }
 
     return () => {
-      if (silentAudioRef.current) {
-        silentAudioRef.current.pause();
-        silentAudioRef.current = null;
+      if (nativeAudioRef.current) {
+        nativeAudioRef.current.pause();
+        nativeAudioRef.current = null;
       }
     };
-  }, []);
+  }, [useNativeAudio]);
+
+  // Load stream source and manage native audio event listeners
+  useEffect(() => {
+    const audio = nativeAudioRef.current;
+    if (!audio) return;
+
+    if (useNativeAudio && pipedAudioUrl) {
+      audio.loop = false;
+      audio.src = pipedAudioUrl;
+      audio.load();
+
+      const handleTimeUpdate = () => {
+        setCurrentTimeSecs(Math.floor(audio.currentTime));
+      };
+
+      const handleLoadedMetadata = () => {
+        console.log("[Native Audio] Audio duration resolved:", audio.duration);
+        if (audio.duration && audio.duration > 0 && !isNaN(audio.duration)) {
+          setTrackDurationSecs(Math.floor(audio.duration));
+        }
+      };
+
+      const handleEnded = () => {
+        console.log("[Native Audio] Track ended naturally. Skipping next.");
+        if (repeatMode === 'one') {
+          audio.currentTime = 0;
+          audio.play().catch(e => console.warn(e));
+          if (playerIframeRef.current) {
+            playerIframeRef.current.contentWindow?.postMessage(
+              JSON.stringify({ event: "command", func: "seekTo", args: [0, true] }),
+              "*"
+            );
+            playerIframeRef.current.contentWindow?.postMessage(
+              JSON.stringify({ event: "command", func: "playVideo", args: [] }),
+              "*"
+            );
+          }
+        } else {
+          playbackProgressTimerNextTrigger();
+        }
+      };
+
+      const handleError = (e: any) => {
+        console.error("[Native Audio] Error occurred playing direct stream. Falling back to iframe:", e);
+        setUseNativeAudio(false);
+      };
+
+      audio.addEventListener('timeupdate', handleTimeUpdate);
+      audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.addEventListener('ended', handleEnded);
+      audio.addEventListener('error', handleError);
+
+      if (isPlaying) {
+        audio.play().catch(err => {
+          console.warn("[Native Audio] Autoplay failed:", err);
+        });
+      }
+
+      return () => {
+        audio.removeEventListener('timeupdate', handleTimeUpdate);
+        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        audio.removeEventListener('ended', handleEnded);
+        audio.removeEventListener('error', handleError);
+      };
+    } else {
+      audio.loop = true;
+      audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
+      audio.load();
+      if (isPlaying) {
+        audio.play().catch(e => console.warn(e));
+      }
+    }
+  }, [pipedAudioUrl, useNativeAudio]);
 
   // Synchronize dynamic browser-level metadata onto OS lockscreen widget
   useEffect(() => {
@@ -499,34 +662,33 @@ export default function App() {
     }
   }, [currentPlayingTrack]);
 
-  // Synchronize master application play state with local silent audio state and MediaSession status
+  // Synchronize master application play state with local native audio state and MediaSession status
   useEffect(() => {
+    const audio = nativeAudioRef.current;
+    if (!audio) return;
+
     if (isPlaying) {
-      if (silentAudioRef.current) {
-        silentAudioRef.current.play().catch(err => {
-          console.log("[Silent Audio] Auto-play prevented:", err);
-        });
-      }
+      audio.play().catch(err => {
+        console.log("[Native Audio] Play prevented:", err);
+      });
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing';
       }
     } else {
-      if (silentAudioRef.current) {
-        silentAudioRef.current.pause();
-      }
+      audio.pause();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'paused';
       }
     }
   }, [isPlaying]);
 
-  // Handle visibility changes proactively to keep silent loop active and streaming in background
+  // Handle visibility changes proactively to keep background playback active and un-paused
   useEffect(() => {
     const handleVisibilityChange = () => {
       console.log(`[Visibility Change] Active tab status: ${document.visibilityState}`);
       if (document.visibilityState === 'hidden' && isPlaying) {
-        if (silentAudioRef.current) {
-          silentAudioRef.current.play().catch(e => console.log("[Background Play] Silent loop play failed:", e));
+        if (nativeAudioRef.current) {
+          nativeAudioRef.current.play().catch(e => console.log("[Background Play] Play failed:", e));
         }
       }
     };
@@ -592,6 +754,9 @@ export default function App() {
 
   const handleTimelineChange = (secs: number) => {
     setCurrentTimeSecs(secs);
+    if (useNativeAudio && nativeAudioRef.current) {
+      nativeAudioRef.current.currentTime = secs;
+    }
     if (playerIframeRef.current) {
       playerIframeRef.current.contentWindow?.postMessage(
         JSON.stringify({ event: "command", func: "seekTo", args: [secs, true] }),
@@ -603,9 +768,13 @@ export default function App() {
   const handleVolumeChange = (vol: number) => {
     setPlaybackVolume(vol);
     localStorage.setItem("syncify_volume", String(vol));
+    if (useNativeAudio && nativeAudioRef.current) {
+      nativeAudioRef.current.volume = isMuted ? 0 : vol / 100;
+    }
     if (playerIframeRef.current) {
+      const targetVolume = useNativeAudio ? 0 : vol;
       playerIframeRef.current.contentWindow?.postMessage(
-        JSON.stringify({ event: "command", func: "setVolume", args: [vol] }),
+        JSON.stringify({ event: "command", func: "setVolume", args: [targetVolume] }),
         "*"
       );
     }
@@ -638,25 +807,33 @@ export default function App() {
 
           if (playerState === 1) {
             setIsPlaying(true);
+            syncYouTubeVolume(useNativeAudio);
           } else if (playerState === 2) {
-            // If the document is hidden (screen locked or browser minimized), do NOT set isPlaying(false).
-            // Retain the playing status so our silent HTML5 audio loop keeps playing, which keeps the browser
-            // tab active in background, preserves JavaScript execution, and maintains lock screen controls!
-            if (document.visibilityState === 'visible') {
-              setIsPlaying(false);
+            // If native audio is active, we completely ignore iframe pauses!
+            // This is because the browser will automatically freeze/pause the iframe when minimized or locked.
+            if (useNativeAudio) {
+              console.log("[Background Play] YouTube iframe paused. Continuing playback via HTML5 native audio stream.");
             } else {
-              console.log("[Background Play] YouTube paused while backgrounded/locked. Retaining playing state and silent audio loop.");
-              if (playerIframeRef.current?.contentWindow) {
-                playerIframeRef.current.contentWindow.postMessage(
-                  JSON.stringify({ event: "command", func: "playVideo", args: [] }),
-                  "*"
-                );
+              if (document.visibilityState === 'visible') {
+                setIsPlaying(false);
+              } else {
+                console.log("[Background Play] YouTube paused while backgrounded/locked. Retaining playing state and silent audio loop.");
+                if (playerIframeRef.current?.contentWindow) {
+                  playerIframeRef.current.contentWindow.postMessage(
+                    JSON.stringify({ event: "command", func: "playVideo", args: [] }),
+                    "*"
+                  );
+                }
               }
             }
           }
 
           if (playerState === 0) {
             console.log("[YouTube Embed Listener] Song ended naturally. Triggering next track.");
+            if (useNativeAudio) {
+              // Handled by native audio ended event
+              return;
+            }
             if (repeatMode === 'one') {
               if (playerIframeRef.current) {
                 playerIframeRef.current.contentWindow?.postMessage(
@@ -676,6 +853,10 @@ export default function App() {
         } else if (data && data.info) {
           const info = data.info;
           hasReceivedYtMessages.current = true;
+          
+          // Constantly ensure volume/mute state sync
+          syncYouTubeVolume(useNativeAudio);
+
           // Support both data.event === "infoDelivery" and direct info message payloads
           if (typeof info.duration === "number" && info.duration > 0) {
             setTrackDurationSecs(Math.round(info.duration));
@@ -685,7 +866,10 @@ export default function App() {
 
           if (typeof info.currentTime === "number") {
             const ytTime = Math.round(info.currentTime);
-            setCurrentTimeSecs(ytTime);
+            // Only update current time state from YouTube if we are not actively streaming through native HTML5 audio
+            if (!useNativeAudio) {
+              setCurrentTimeSecs(ytTime);
+            }
             // If YouTube current time is greater than trackDurationSecs, dynamically expand the duration!
             if (ytTime > trackDurationSecs) {
               setTrackDurationSecs(ytTime + 10);
@@ -705,10 +889,13 @@ export default function App() {
     return () => {
       window.removeEventListener("message", handleYouTubeMessage);
     };
-  }, [repeatMode, activePlayingTrackId, playableTracks, trackDurationSecs]);
+  }, [repeatMode, activePlayingTrackId, playableTracks, trackDurationSecs, useNativeAudio]);
 
   // Local counting timer clock for 100% responsive timeline slider updates
   useEffect(() => {
+    // If we're using native background audio, its own 'timeupdate' event handles setting currentTimeSecs perfectly!
+    if (useNativeAudio) return;
+
     let timerId: any = null;
     // Only tick locally if the player is set to play AND we either haven't received YouTube API messages yet, OR the YouTube player state is actively playing (1)
     const shouldTick = isPlaying && activePlayingTrackId && (!hasReceivedYtMessages.current || ytPlayerState === 1);
@@ -738,24 +925,39 @@ export default function App() {
     return () => {
       if (timerId) clearInterval(timerId);
     };
-  }, [isPlaying, activePlayingTrackId, trackDurationSecs, repeatMode, playableTracks, ytPlayerState]);
+  }, [isPlaying, activePlayingTrackId, trackDurationSecs, repeatMode, playableTracks, ytPlayerState, useNativeAudio]);
 
   // Volume and mute controls synchronizer
   useEffect(() => {
+    if (nativeAudioRef.current) {
+      nativeAudioRef.current.volume = isMuted ? 0 : playbackVolume / 100;
+    }
+
     if (playerIframeRef.current) {
+      const targetVolume = useNativeAudio ? 0 : playbackVolume;
+      const targetMute = useNativeAudio ? true : isMuted;
+
       playerIframeRef.current.contentWindow?.postMessage(
-        JSON.stringify({ event: "command", func: "setVolume", args: [playbackVolume] }),
+        JSON.stringify({ event: "command", func: "setVolume", args: [targetVolume] }),
         "*"
       );
       playerIframeRef.current.contentWindow?.postMessage(
-        JSON.stringify({ event: "command", func: isMuted ? "mute" : "unMute", args: [] }),
+        JSON.stringify({ event: "command", func: targetMute ? "mute" : "unMute", args: [] }),
         "*"
       );
     }
-  }, [playbackVolume, isMuted, activePlayingTrackId]);
+  }, [playbackVolume, isMuted, activePlayingTrackId, useNativeAudio]);
 
   // Play/pause controls synchronizer
   useEffect(() => {
+    if (nativeAudioRef.current) {
+      if (isPlaying) {
+        nativeAudioRef.current.play().catch(e => console.warn(e));
+      } else {
+        nativeAudioRef.current.pause();
+      }
+    }
+
     if (playerIframeRef.current) {
       const command = isPlaying ? "playVideo" : "pauseVideo";
       playerIframeRef.current.contentWindow?.postMessage(
