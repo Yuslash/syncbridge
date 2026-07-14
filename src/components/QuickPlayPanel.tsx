@@ -224,7 +224,7 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
                 }
               }}
             />
-            <Music className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#10B981]" />
+            <Music className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-400 overflow-visible [filter:drop-shadow(0_0_8px_rgba(96,165,250,0.55))]" />
             <button
               onClick={async () => {
                 try {
@@ -247,7 +247,7 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
           <button
             onClick={handleSearchOrPasteAndPlay}
             disabled={searching || isLoadingSong}
-            className="h-12 sm:h-14 px-6 md:px-8 bg-[#10B981] hover:bg-[#059669] text-black font-extrabold rounded-2xl transition-all flex items-center justify-center gap-2 flex-shrink-0 cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(16,185,129,0.25)]"
+            className="h-12 sm:h-14 px-6 md:px-8 bg-white hover:bg-gray-100 text-black font-extrabold rounded-2xl transition-all flex items-center justify-center gap-2 flex-shrink-0 cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(255,255,255,0.25)] hover:shadow-[0_0_25px_rgba(255,255,255,0.45)] transform hover:-translate-y-0.5"
           >
             {searching || isLoadingSong ? (
               <>

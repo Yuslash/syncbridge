@@ -340,9 +340,10 @@ app.post("/api/spotify-track-details", async (req, res): Promise<any> => {
     if (!url || typeof url !== "string") {
       return res.status(400).json({ error: "Spotify URL is required" });
     }
-    const trackIdMatch = url.match(/track\/([a-zA-Z0-9]{22})/);
+    // Match Base62 Spotify ID of typical lengths (typically 21, 22 or 23 characters)
+    const trackIdMatch = url.match(/track\/([a-zA-Z0-9]{21,23})/);
     if (!trackIdMatch) {
-      return res.status(400).json({ error: "Invalid Spotify track link." });
+      return res.status(400).json({ error: "Invalid Spotify track link. Could not extract Spotify track ID." });
     }
     const trackId = trackIdMatch[1];
     const targetUrl = `https://open.spotify.com/embed/track/${trackId}`;
@@ -365,9 +366,15 @@ app.post("/api/spotify-track-details", async (req, res): Promise<any> => {
       return res.json({ track });
     }
     
+    // Fallback 1: Title Parsing with various standard Spotify page title layouts
     const titleMatch = html.match(/<title>([\s\S]*?)<\/title>/i);
     if (titleMatch) {
-      const pageTitle = titleMatch[1].replace(" - song and lyrics by Spotify", "").trim();
+      let pageTitle = titleMatch[1].trim();
+      // Remove possible site suffix
+      pageTitle = pageTitle.replace(/\s*\|\s*Spotify/gi, "");
+      pageTitle = pageTitle.replace(/\s*-\s*song\s+and\s+lyrics\s+by\s+/gi, " - song by ");
+      pageTitle = pageTitle.replace(/\s*-\s*song\s+by\s+/gi, " - song by ");
+      
       const parts = pageTitle.split(" - song by ");
       if (parts.length >= 2) {
         return res.json({
@@ -379,6 +386,38 @@ app.post("/api/spotify-track-details", async (req, res): Promise<any> => {
           }
         });
       }
+    }
+
+    // Fallback 2: Call OpenRouter to dynamically find track information from Spotify Embed HTML
+    try {
+      console.log("[Spotify Track Engine] Programmatic and title fallback failed. Trying OpenRouter...");
+      const cleanContent = cleanSpotifyHtml(html);
+      const prompt = `Extract the track title, artist, and album name (if present) from this Spotify Track Embed HTML.
+Source snippet:
+${cleanContent}
+
+You MUST return your output STRICTLY as a JSON object of this structure:
+{
+  "title": "Song Title",
+  "artist": "Artist Name",
+  "album": "Album Name (or empty string)",
+  "durationMs": 180000
+}`;
+      const openRouterText = await callOpenRouter(prompt, true);
+      const parsed = JSON.parse(openRouterText.trim());
+      if (parsed.title && parsed.artist) {
+        return res.json({
+          track: {
+            title: parsed.title,
+            artist: parsed.artist,
+            album: parsed.album || "",
+            durationMs: parsed.durationMs || 180000,
+            artworkUrl: ""
+          }
+        });
+      }
+    } catch (llmErr) {
+      console.error("[Spotify Track OpenRouter Error]", llmErr);
     }
     
     return res.status(404).json({ error: "Could not parse track details." });
@@ -399,10 +438,10 @@ app.post("/api/parse-spotify", async (req, res): Promise<any> => {
       return res.status(400).json({ error: "Spotify URL is required" });
     }
 
-    // Extract Playlist ID from typical Spotify links
-    const playlistIdMatch = url.match(/playlist\/([a-zA-Z0-9]{22})/);
+    // Extract Playlist ID from typical Spotify links (typically 21, 22 or 23 characters)
+    const playlistIdMatch = url.match(/playlist\/([a-zA-Z0-9]{21,23})/);
     if (!playlistIdMatch) {
-      return res.status(400).json({ error: "Invalid Spotify playlist link. Could not find a 22-character playlist ID." });
+      return res.status(400).json({ error: "Invalid Spotify playlist link. Could not find a valid playlist ID." });
     }
 
     const playlistId = playlistIdMatch[1];

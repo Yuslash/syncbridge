@@ -180,7 +180,7 @@ export function TrackRow({
       onDoubleClick={handleRowPlayClick}
       className={`grid grid-cols-1 md:grid-cols-12 gap-4 py-4 px-5 border-b border-white/5 items-center transition-all group cursor-pointer ${
         isCurrentActive 
-          ? "bg-[#E4C58E]/5 border-l-2 border-l-[#E4C58E] shadow-[inset_0_1px_4px_rgba(228,197,142,0.15)]"
+          ? "bg-blue-400/5 border-l-2 border-l-blue-400 shadow-[inset_0_1px_4px_rgba(96,165,250,0.15)]"
           : hasYouTubeMatch 
             ? "bg-transparent hover:bg-white/5" 
             : "bg-red-500/5 hover:bg-red-500/10"
@@ -200,11 +200,11 @@ export function TrackRow({
                 >
                   {/* Active equalizer animation bars */}
                   <div className="flex items-end gap-[2px] h-3 w-3 group-hover:hidden">
-                    <div className="w-[2.5px] bg-[#E4C58E] rounded-full animate-bar-wave-1 h-3" />
-                    <div className="w-[2.5px] bg-[#E4C58E] rounded-full animate-bar-wave-2 h-4" />
-                    <div className="w-[2.5px] bg-[#E4C58E] rounded-full animate-bar-wave-3 h-2" />
+                    <div className="w-[2.5px] bg-blue-400 rounded-full animate-bar-wave-1 h-3" />
+                    <div className="w-[2.5px] bg-blue-400 rounded-full animate-bar-wave-2 h-4" />
+                    <div className="w-[2.5px] bg-blue-400 rounded-full animate-bar-wave-3 h-2" />
                   </div>
-                  <Pause className="w-4 h-4 hidden group-hover:block fill-[#E4C58E] text-[#E4C58E]" />
+                  <Pause className="w-4 h-4 hidden group-hover:block fill-blue-400 text-blue-400" />
                 </button>
               ) : (
                 <button 
@@ -212,7 +212,7 @@ export function TrackRow({
                   className="text-white hover:text-white/80 cursor-pointer focus:outline-none flex items-center justify-center"
                   title="Play song"
                 >
-                  <Play className="w-4 h-4 fill-[#E4C58E] text-[#E4C58E]" />
+                  <Play className="w-4 h-4 fill-blue-400 text-blue-400" />
                 </button>
               )
             ) : (
@@ -222,10 +222,10 @@ export function TrackRow({
                 </span>
                 <button 
                   onClick={handleRowPlayClick}
-                  className="hidden group-hover:block text-[#E4C58E] hover:text-[#E4C58E]/80 cursor-pointer focus:outline-none transition-colors"
+                  className="hidden group-hover:block text-blue-400 hover:text-blue-400/80 cursor-pointer focus:outline-none transition-colors"
                   title="Play Track"
                 >
-                  <Play className="w-4 h-4 fill-[#E4C58E] text-[#E4C58E]" />
+                  <Play className="w-4 h-4 fill-blue-400 text-blue-400" />
                 </button>
               </>
             )}
@@ -237,7 +237,7 @@ export function TrackRow({
           <div 
             onClick={handleRowPlayClick}
             className={`w-11 h-11 rounded-lg overflow-hidden bg-white/5 flex items-center justify-center flex-shrink-0 border shadow-md relative group/art-click ${
-              isCurrentActive ? "border-[#E4C58E]/60" : "border-white/10"
+              isCurrentActive ? "border-blue-400/60 shadow-[0_0_10px_rgba(96,165,250,0.3)]" : "border-white/10"
             }`}
           >
             {track.artworkUrl ? (
@@ -248,7 +248,7 @@ export function TrackRow({
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <Music className={`w-4 h-4 ${isCurrentActive ? 'text-[#E4C58E]' : 'text-white/40'}`} />
+              <Music className={`w-4 h-4 ${isCurrentActive ? 'text-blue-400' : 'text-white/40'}`} />
             )}
             
             {/* Dark vinyl center dot decoration overlay for visual premium identity */}
@@ -264,7 +264,7 @@ export function TrackRow({
             <h4 
               className={`text-sm font-semibold transition-colors font-sans ${
                 isCurrentActive 
-                  ? "text-[#E4C58E]" 
+                  ? "text-blue-400 font-bold" 
                   : "text-[#fafafa] hover:text-white"
               } ${
                 track.title.length > 22 ? "mobile-marquee-title" : "truncate w-full"
@@ -275,7 +275,7 @@ export function TrackRow({
             </h4>
             <p 
               className={`text-xs mt-0.5 ${
-                isCurrentActive ? "text-[#E4C58E]/80" : "text-white/40"
+                isCurrentActive ? "text-blue-400/80" : "text-white/40"
               } ${
                 track.artist.length > 25 ? "mobile-marquee-artist" : "truncate w-full"
               }`} 
@@ -298,11 +298,11 @@ export function TrackRow({
               <Loader2 className="w-2.5 h-2.5 animate-spin text-white" /> Search
             </span>
           ) : track.status === "matched" ? (
-            <span className="flex items-center gap-1 text-[9px] font-bold bg-[#E4C58E]/10 text-[#E4C58E] px-2 py-0.5 rounded border border-[#E4C58E]/20">
+            <span className="flex items-center gap-1 text-[9px] font-bold bg-blue-400/10 text-blue-400 px-2 py-0.5 rounded border border-blue-400/20">
               <CheckCircle2 className="w-3 h-3" /> Matched
             </span>
           ) : track.status === "manual" ? (
-            <span className="flex items-center gap-1 text-[9px] font-bold bg-[#E4C58E]/10 text-[#E4C58E] px-2 py-0.5 rounded border border-[#E4C58E]/20">
+            <span className="flex items-center gap-1 text-[9px] font-bold bg-blue-400/10 text-blue-400 px-2 py-0.5 rounded border border-blue-400/20">
               <Link2 className="w-3 h-3" /> Linked
             </span>
           ) : (
@@ -320,11 +320,11 @@ export function TrackRow({
             <Loader2 className="w-3 h-3 animate-spin text-white" /> Searching
           </span>
         ) : track.status === "matched" ? (
-          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-[#E4C58E]/10 text-[#E4C58E] px-2.5 py-0.5 rounded border border-[#E4C58E]/20 font-mono uppercase tracking-wider">
+          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-blue-400/10 text-blue-400 px-2.5 py-0.5 rounded border border-blue-400/20 font-mono uppercase tracking-wider">
             <CheckCircle2 className="w-3.5 h-3.5" /> Matched
           </span>
         ) : track.status === "manual" ? (
-          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-[#E4C58E]/10 text-[#E4C58E] px-2.5 py-0.5 rounded border border-[#E4C58E]/20 font-mono uppercase tracking-wider">
+          <span className="flex items-center gap-1.5 text-[10px] font-bold bg-blue-400/10 text-blue-400 px-2.5 py-0.5 rounded border border-blue-400/20 font-mono uppercase tracking-wider">
             <Link2 className="w-3.5 h-3.5" /> Linked
           </span>
         ) : (
@@ -458,9 +458,9 @@ export function TrackRow({
               </div>
               <button 
                 onClick={handleManualLink}
-                className="bg-[#E4C58E] hover:bg-[#C5A059] text-black font-bold text-xs px-3 py-1.5 h-9 rounded-lg transition-all active:scale-95 shadow-md flex items-center gap-1 flex-shrink-0"
+                className="bg-white hover:bg-gray-100 text-black font-bold text-xs px-3 py-1.5 h-9 rounded-lg transition-all active:scale-95 shadow-[0_0_15px_rgba(255,255,255,0.25)] hover:shadow-[0_0_25px_rgba(255,255,255,0.45)] transform hover:-translate-y-0.5 flex items-center gap-1 flex-shrink-0 cursor-pointer"
               >
-                <Link2 className="w-3.5 h-3.5" /> Connect
+                <Link2 className="w-3.5 h-3.5 text-black" /> Connect
               </button>
             </div>
             
@@ -657,7 +657,7 @@ export function TrackRow({
                       });
                       setShowSuggestions(false);
                     }}
-                    className="w-full sm:w-auto h-8 px-3 text-[11px] font-extrabold rounded-lg bg-[#E4C58E] hover:bg-[#C5A059] text-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-md"
+                    className="w-full sm:w-auto h-8 px-3 text-[11px] font-extrabold rounded-lg bg-white hover:bg-gray-100 text-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-[0_0_15px_rgba(255,255,255,0.25)] hover:shadow-[0_0_25px_rgba(255,255,255,0.45)] transform hover:-translate-y-0.5"
                   >
                     Connect Track
                   </button>

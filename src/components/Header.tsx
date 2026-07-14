@@ -12,7 +12,7 @@ interface HeaderProps {
 
 export function Header({ user, onLogin, onLogout, isCloudActive, onGoHome }: HeaderProps) {
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[#0e0d0a]/65 backdrop-blur-md shadow-xl">
+    <header className="sticky top-0 z-50 w-full border-b border-white/5 bg-[#0a0a0a]/20 backdrop-blur-md shadow-xl">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 sm:h-16 md:h-20 flex items-center justify-between gap-4">
         
         {/* Sleek Brand Logo Layout - Always interactive & clicking goes Home */}
@@ -22,24 +22,24 @@ export function Header({ user, onLogin, onLogout, isCloudActive, onGoHome }: Hea
           title="Return to Home Importer"
         >
           {/* Logo Icon with subtle glowing ring on hover */}
-          <div className="relative p-1.5 sm:p-2.5 bg-black/40 border border-white/15 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:border-[#10B981] group-hover:shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-            <Music className="w-4 h-4 sm:w-5 sm:h-5 text-[#10B981] transition-colors duration-300 group-hover:text-white" />
-            <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#10B981] ring-2 ring-[#0e0d0a] animate-pulse" />
+          <div className="relative p-1.5 sm:p-2.5 bg-black/40 border border-white/10 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:border-blue-400 group-hover:shadow-[0_0_20px_rgba(96,165,250,0.35)]">
+            <Music className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400 transition-colors duration-300 group-hover:text-white" />
+            <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-400 ring-2 ring-[#0a0a0a] animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.8)]" />
           </div>
-
+ 
           {/* Logo Typography and dynamic sub-tagging */}
           <div className="flex flex-col text-left">
             <div className="flex items-center gap-1 sm:gap-1.5 leading-none">
-              <span className="font-serif italic tracking-wide text-white text-base sm:text-lg md:text-2xl font-bold accent-glow">
-                Sync<span className="text-[#10B981]">Bridge</span>
+              <span className="font-sans tracking-wide text-white text-base sm:text-lg md:text-2xl font-bold accent-glow">
+                Sync<span className="text-blue-400 font-extralight">Bridge</span>
               </span>
-              <span className="text-[7px] sm:text-[8px] font-mono font-black uppercase text-emerald-200 bg-emerald-950/40 border border-white/15 rounded px-1 py-0.5 tracking-wider leading-none select-none hidden xs:inline-block">
+              <span className="text-[7px] sm:text-[8px] font-mono font-black uppercase text-blue-200 bg-blue-950/40 border border-white/10 rounded px-1 py-0.5 tracking-wider leading-none select-none hidden xs:inline-block">
                 GLASS ENGINE
               </span>
             </div>
             {/* Minimalist, professional sublabel - replaces messy color-block badges */}
             <span className="text-[7px] sm:text-[9px] font-mono tracking-[0.1em] sm:tracking-[0.18em] text-zinc-400 mt-1 uppercase transition-colors duration-300 group-hover:text-white leading-none">
-              Spotify <span className="text-[#10B981]">⇄</span> YouTube Loom
+              Spotify <span className="text-blue-400">⇄</span> YouTube Loom
             </span>
           </div>
         </div>
@@ -50,24 +50,24 @@ export function Header({ user, onLogin, onLogout, isCloudActive, onGoHome }: Hea
           {/* Quick Borderless navigation */}
           <button
             onClick={onGoHome}
-            className="hidden sm:flex items-center gap-1.5 h-9 px-3 text-xs font-mono font-bold uppercase tracking-widest text-zinc-400 hover:text-[#10B981] transition-colors cursor-pointer select-none"
+            className="hidden sm:flex items-center gap-1.5 h-9 px-3 text-xs font-mono font-bold uppercase tracking-widest text-zinc-400 hover:text-blue-400 transition-colors cursor-pointer select-none"
             title="Clean interface reset"
           >
             <span>Workspace</span>
           </button>
 
           {/* Combined Sync Status & Account Pill */}
-          <div className="flex items-center gap-1.5 sm:gap-2 bg-black/50 border border-white/15 rounded-full p-1 pl-2.5 sm:pl-3.5 pr-1 sm:pr-1.5 shadow-inner">
+          <div className="flex items-center gap-1.5 sm:gap-2 bg-black/50 border border-white/10 rounded-full p-1 pl-2.5 sm:pl-3.5 pr-1 sm:pr-1.5 shadow-inner">
             
             {/* Status indicator (Pulsing online dot vs. compact solid local status) */}
             <div className="flex items-center gap-1 sm:gap-1.5 select-none" title={isCloudActive ? "Syncing with cloud database" : "Data persisting in secure local browser DB"}>
               {isCloudActive ? (
                 <>
                   <span className="relative flex h-1 w-1 sm:h-1.5 sm:w-1.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-1 sm:h-1.5 w-1 sm:w-1.5 bg-emerald-500"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1 sm:h-1.5 w-1 sm:w-1.5 bg-blue-400"></span>
                   </span>
-                  <span className="hidden sm:inline text-[8px] md:text-[9px] font-mono font-black uppercase tracking-widest text-emerald-400">
+                  <span className="hidden sm:inline text-[8px] md:text-[9px] font-mono font-black uppercase tracking-widest text-blue-400">
                     Cloud Core
                   </span>
                 </>
@@ -92,11 +92,11 @@ export function Header({ user, onLogin, onLogout, isCloudActive, onGoHome }: Hea
                     <img 
                       src={user.photoURL} 
                       alt={user.displayName || "Avatar"} 
-                      className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border border-white/15 object-cover hover:border-[#10B981] transition-colors"
+                      className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border border-white/10 object-cover hover:border-blue-400 transition-colors"
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/10 border border-white/15 text-white font-bold flex items-center justify-center text-[8px] sm:text-[10px]">
+                    <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/10 border border-white/10 text-white font-bold flex items-center justify-center text-[8px] sm:text-[10px]">
                       {user.displayName ? user.displayName[0].toUpperCase() : "U"}
                     </div>
                   )}
@@ -119,7 +119,7 @@ export function Header({ user, onLogin, onLogout, isCloudActive, onGoHome }: Hea
               isCloudActive && (
                 <button
                   onClick={onLogin}
-                  className="h-7 sm:h-8 pl-2 sm:pl-3 pr-3 sm:pr-4 rounded-full bg-[#10B981] hover:bg-[#059669] text-black font-semibold text-[10px] sm:text-xs transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 select-none active:scale-95 duration-100 font-mono uppercase tracking-wider font-bold"
+                  className="h-7 sm:h-8 pl-2 sm:pl-3 pr-3 sm:pr-4 rounded-full bg-white hover:bg-gray-100 text-black font-semibold text-[10px] sm:text-xs transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 select-none active:scale-95 duration-100 font-mono uppercase tracking-wider font-bold shadow-[0_0_15px_rgba(255,255,255,0.25)] hover:shadow-[0_0_25px_rgba(255,255,255,0.45)] transform hover:-translate-y-0.5"
                 >
                   <LogIn className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Sign In</span><span className="xs:hidden">In</span>
                 </button>

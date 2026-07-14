@@ -349,7 +349,7 @@ export function QueuePanel({
           <button
             onClick={handleAddToQueueSubmit}
             disabled={searching || loadingLink}
-            className="h-11 px-5 bg-[#10B981] hover:bg-[#059669] text-black text-xs font-extrabold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed shadow-[0_4px_15px_rgba(16,185,129,0.2)]"
+            className="h-11 px-5 bg-white hover:bg-gray-100 text-black text-xs font-extrabold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(255,255,255,0.25)] hover:shadow-[0_0_25px_rgba(255,255,255,0.45)] transform hover:-translate-y-0.5"
           >
             {searching || loadingLink ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-black" />
@@ -407,8 +407,8 @@ export function QueuePanel({
       {previousTracks.length > 0 && (
         <div className="flex flex-col gap-2.5 pb-5 border-b border-white/10">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 font-mono flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /> Previous Tracks ({previousTracks.length})
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-blue-400 font-mono flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-blue-400 rounded-full shadow-[0_0_8px_rgba(96,165,250,0.8)]" /> Previous Tracks ({previousTracks.length})
             </span>
             <button
               onClick={() => setPreviousTracks([])}
@@ -446,12 +446,21 @@ export function QueuePanel({
                     {track.artist}
                   </span>
                 </div>
-                <button
-                  onClick={() => onPlayPreviousTrack(track)}
-                  className="px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-widest text-[#1DB954] hover:text-white bg-[#1DB954]/10 hover:bg-[#1DB954] border border-[#1DB954]/20 hover:border-[#1DB954] rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
-                >
-                  Play
-                </button>
+                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
+                  <button
+                    onClick={() => onPlayPreviousTrack(track)}
+                    className="px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-widest text-blue-400 hover:text-white bg-blue-400/10 hover:bg-blue-400 border border-blue-400/20 hover:border-blue-400 rounded-lg transition-all cursor-pointer"
+                  >
+                    Play
+                  </button>
+                  <button
+                    onClick={() => setPreviousTracks(prev => prev.filter((_, i) => i !== idx))}
+                    className="p-1.5 text-zinc-500 hover:text-rose-400 rounded-lg bg-white/5 hover:bg-rose-500/10 border border-white/5 hover:border-rose-500/20 transition-all cursor-pointer flex items-center justify-center"
+                    title="Remove from history"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -460,15 +469,15 @@ export function QueuePanel({
 
       {currentPlayingTrack && (
         <div className="flex flex-col gap-2 pb-5 border-b border-white/10">
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#1DB954] font-mono flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 bg-[#1DB954] rounded-full animate-pulse" /> Currently Playing
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-blue-400 font-mono flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.8)]" /> Currently Playing
           </span>
           <motion.div 
             animate={{
               boxShadow: [
-                "0 0 12px rgba(29,185,84,0.05), inset 0 0 12px rgba(29,185,84,0.02)",
-                "0 0 24px rgba(29,185,84,0.18), inset 0 0 16px rgba(29,185,84,0.05)",
-                "0 0 12px rgba(29,185,84,0.05), inset 0 0 12px rgba(29,185,84,0.02)"
+                "0 0 12px rgba(96,165,250,0.05), inset 0 0 12px rgba(96,165,250,0.02)",
+                "0 0 24px rgba(96,165,250,0.18), inset 0 0 16px rgba(96,165,250,0.05)",
+                "0 0 12px rgba(96,165,250,0.05), inset 0 0 12px rgba(96,165,250,0.02)"
               ]
             }}
             transition={{
@@ -476,10 +485,10 @@ export function QueuePanel({
               repeat: Infinity,
               ease: "easeInOut"
             }}
-            className="flex items-center gap-4 p-4 rounded-2xl border border-[#1DB954]/30 bg-[#111113] relative overflow-hidden group"
+            className="flex items-center gap-4 p-4 rounded-2xl border border-blue-400/30 bg-[#0c0c0e] relative overflow-hidden group"
           >
             {/* Ambient blurred glow in background */}
-            <div className="absolute right-0 top-0 w-32 h-32 bg-[#1DB954]/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute right-0 top-0 w-32 h-32 bg-blue-400/5 rounded-full blur-3xl pointer-events-none" />
             
             {/* Retro-Modern Spinning Vinyl Record Artwork */}
             <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-zinc-800/80 flex-shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.6)] relative bg-black flex items-center justify-center p-[2px]">
@@ -513,7 +522,7 @@ export function QueuePanel({
             </div>
 
             <div className="flex-1 min-w-0">
-              <span className="text-[8px] font-black tracking-widest text-[#1DB954] uppercase bg-[#1DB954]/10 border border-[#1DB954]/20 px-2 py-0.5 rounded-full inline-block mb-1">
+              <span className="text-[8px] font-black tracking-widest text-blue-400 uppercase bg-blue-400/10 border border-blue-400/20 px-2 py-0.5 rounded-full inline-block mb-1 shadow-[0_0_8px_rgba(96,165,250,0.15)]">
                 Active Session
               </span>
               <h5 className="text-sm font-bold text-white truncate" title={currentPlayingTrack.title}>
@@ -546,7 +555,7 @@ export function QueuePanel({
                     repeatType: "reverse",
                     ease: "easeInOut",
                   }}
-                  className="w-[3px] bg-gradient-to-t from-[#1DB954] to-emerald-300 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.5)]"
+                  className="w-[3px] bg-gradient-to-t from-blue-400 to-cyan-300 rounded-full shadow-[0_0_8px_rgba(96,165,250,0.5)]"
                 />
               ))}
             </div>
