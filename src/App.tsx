@@ -800,6 +800,12 @@ export default function App() {
   };
 
   const playbackProgressTimerNextTrigger = () => {
+    // If there are songs in the queue, we should always proceed to the next song in the queue
+    if (queue.length > 0) {
+      handleSkipNext();
+      return;
+    }
+
     // If the track was played from the queue and the queue is now empty, show the queue-end modal
     if (playedFromQueue && queue.length === 0) {
       if (currentPlayingTrack) {

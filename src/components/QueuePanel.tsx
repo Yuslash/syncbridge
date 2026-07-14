@@ -47,6 +47,11 @@ export function QueuePanel({
   // Sorting Modes: 'drag' or 'number'
   const [isNumberedMode, setIsNumberedMode] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+
+  React.useEffect(() => {
+    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
 
   const isValidLink = (text: string): boolean => {
     const cleanText = text.trim();
@@ -579,7 +584,7 @@ export function QueuePanel({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-2 max-h-[250px] sm:max-h-[380px] md:max-h-[500px] overflow-y-auto overscroll-y-contain touch-pan-y custom-scrollbar pr-1">
+          <div className="flex flex-col gap-2 max-h-[280px] sm:max-h-[380px] md:max-h-[500px] overflow-y-auto overscroll-y-contain touch-pan-y custom-scrollbar pr-1">
             <AnimatePresence initial={false}>
               {queue.map((track, index) => {
                 const isDragging = draggedIndex === index;
@@ -590,108 +595,136 @@ export function QueuePanel({
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, x: -20 }}
-                    className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-2xl border transition-all ${
                       isDragging 
                         ? "border-white bg-white/15 opacity-60 scale-[0.98]" 
                         : "border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/15"
                     }`}
-                    draggable={!isNumberedMode}
+                    draggable={!isNumberedMode && !isTouchDevice}
                     onDragStart={(e) => handleDragStart(e, index)}
                     onDragOver={(e) => handleDragOver(e, index)}
                     onDragEnd={() => setDraggedIndex(null)}
                     onDrop={(e) => handleDrop(e, index)}
                   >
-                    {/* Drag Handle or Index marker */}
-                    {!isNumberedMode ? (
-                      <div className="cursor-grab active:cursor-grabbing text-white/40 hover:text-white p-1 rounded transition-colors flex-shrink-0">
-                        <GripVertical className="w-4 h-4" />
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <input
-                           type="text"
-                           inputMode="numeric"
-                           pattern="[0-9]*"
-                           defaultValue={index + 1}
-                           onBlur={(e) => handleNumberChange(index, e.target.value)}
-                           onKeyDown={(e) => {
-                             if (e.key === "Enter") {
-                               handleNumberChange(index, (e.target as HTMLInputElement).value);
-                               (e.target as HTMLInputElement).blur();
-                             }
-                           }}
-                           className="w-8 h-7 bg-black/40 text-center font-mono font-bold text-xs text-white rounded border border-white/15 focus:outline-none focus:border-white/40"
-                        />
-                      </div>
-                    )}
+                    {/* Upper row/column: thumbnail + title/artist + play button (Mobile) */}
+                    <div className="flex items-center justify-between gap-2 flex-1 min-w-0 w-full sm:w-auto">
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        {/* Drag Handle or Index marker */}
+                        {!isNumberedMode ? (
+                          !isTouchDevice ? (
+                            <div className="cursor-grab active:cursor-grabbing text-white/40 hover:text-white p-1 rounded transition-colors flex-shrink-0">
+                              <GripVertical className="w-4 h-4" />
+                            </div>
+                          ) : (
+                            <div className="text-[10px] font-mono text-white/30 w-4 text-center flex-shrink-0 font-bold">
+                              {index + 1}
+                            </div>
+                          )
+                        ) : (
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <input
+                               type="text"
+                               inputMode="numeric"
+                               pattern="[0-9]*"
+                               defaultValue={index + 1}
+                               onBlur={(e) => handleNumberChange(index, e.target.value)}
+                               onKeyDown={(e) => {
+                                 if (e.key === "Enter") {
+                                   handleNumberChange(index, (e.target as HTMLInputElement).value);
+                                   (e.target as HTMLInputElement).blur();
+                                 }
+                               }}
+                               className="w-8 h-7 bg-black/40 text-center font-mono font-bold text-xs text-white rounded border border-white/15 focus:outline-none focus:border-white/40"
+                            />
+                          </div>
+                        )}
 
-                    {/* Image thumb */}
-                    <div className="w-10 h-10 rounded-lg overflow-hidden border border-white/10 flex-shrink-0 relative group">
-                      <img
-                        src={track.artworkUrl || `https://img.youtube.com/vi/${track.videoId}/mqdefault.jpg`}
-                        alt={track.title}
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
+                        {/* Image thumb */}
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg overflow-hidden border border-white/10 flex-shrink-0 relative group">
+                          <img
+                            src={track.artworkUrl || `https://img.youtube.com/vi/${track.videoId}/mqdefault.jpg`}
+                            alt={track.title}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                          <button
+                            onClick={() => onPlayNextImmediate(track)}
+                            className="absolute inset-0 bg-black/60 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                            title="Play song now"
+                          >
+                            <Play className="w-3.5 h-3.5 text-white fill-current" />
+                          </button>
+                        </div>
+
+                        {/* Meta info */}
+                        <div className="flex-1 min-w-0">
+                          <h5 className="text-xs font-bold text-white truncate" title={track.title}>
+                            {track.title}
+                          </h5>
+                          <p className="text-[10px] text-white/40 truncate mt-0.5" title={track.artist}>
+                            {track.artist}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Play instantly Button - Mobile view */}
                       <button
                         onClick={() => onPlayNextImmediate(track)}
-                        className="absolute inset-0 bg-black/60 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                        title="Play song now"
-                      >
-                        <Play className="w-3.5 h-3.5 text-white fill-current" />
-                      </button>
-                    </div>
-
-                    {/* Meta info */}
-                    <div className="flex-1 min-w-0">
-                      <h5 className="text-xs font-bold text-white truncate" title={track.title}>
-                        {track.title}
-                      </h5>
-                      <p className="text-[10px] text-white/40 truncate mt-0.5" title={track.artist}>
-                        {track.artist}
-                      </p>
-                    </div>
-
-                    {/* Action buttons (Arrows + Delete) */}
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {/* Play instantly Button */}
-                      <button
-                        onClick={() => onPlayNextImmediate(track)}
-                        className="px-2 py-1 sm:px-2.5 sm:py-1 text-[9px] font-extrabold uppercase tracking-widest text-blue-400 hover:text-white bg-blue-400/10 hover:bg-blue-400 border border-blue-400/20 hover:border-blue-400 rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                        className="sm:hidden px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-widest text-blue-400 hover:text-white bg-blue-400/10 hover:bg-blue-400 border border-blue-400/20 hover:border-blue-400 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 active:bg-blue-400 active:text-black"
                         title="Play song now"
                       >
                         <Play className="w-2.5 h-2.5 fill-current" />
                         <span>Play</span>
                       </button>
+                    </div>
 
-                      {/* Move Up Button */}
-                      <button
-                        onClick={() => moveUp(index)}
-                        disabled={index === 0}
-                        className="hidden sm:inline-flex p-1.5 text-white/40 hover:text-white disabled:text-white/10 disabled:cursor-not-allowed hover:bg-white/10 rounded transition-all"
-                        title="Move Up"
-                      >
-                        <ArrowUp className="w-3.5 h-3.5" />
-                      </button>
+                    {/* Bottom actions panel (mobile) or Right actions panel (desktop) */}
+                    <div className="flex items-center justify-between sm:justify-end gap-1.5 border-t border-white/[0.03] pt-2 sm:pt-0 sm:border-0 w-full sm:w-auto">
+                      {/* Mobile track indicator tag */}
+                      <div className="sm:hidden text-[9px] font-mono text-white/40 font-bold bg-white/5 px-2 py-0.5 rounded-md">
+                        Track #{index + 1}
+                      </div>
 
-                      {/* Move Down Button */}
-                      <button
-                        onClick={() => moveDown(index)}
-                        disabled={index === queue.length - 1}
-                        className="hidden sm:inline-flex p-1.5 text-white/40 hover:text-white disabled:text-white/10 disabled:cursor-not-allowed hover:bg-white/10 rounded transition-all"
-                        title="Move Down"
-                      >
-                        <ArrowDown className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-2 sm:gap-1.5 flex-shrink-0 ml-auto sm:ml-0">
+                        {/* Play instantly Button - Desktop only */}
+                        <button
+                          onClick={() => onPlayNextImmediate(track)}
+                          className="hidden sm:flex px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-widest text-blue-400 hover:text-white bg-blue-400/10 hover:bg-blue-400 border border-blue-400/20 hover:border-blue-400 rounded-lg transition-all cursor-pointer items-center gap-1"
+                          title="Play song now"
+                        >
+                          <Play className="w-2.5 h-2.5 fill-current" />
+                          <span>Play</span>
+                        </button>
 
-                      {/* Trash Delete Button */}
-                      <button
-                        onClick={() => removeTrack(track.id)}
-                        className="p-1.5 text-white/40 hover:text-red-400 hover:bg-red-500/10 rounded transition-all"
-                        title="Remove from queue"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                        {/* Move Up Button */}
+                        <button
+                          onClick={() => moveUp(index)}
+                          disabled={index === 0}
+                          className="p-2 sm:p-1.5 text-white/40 hover:text-white disabled:text-white/10 disabled:cursor-not-allowed hover:bg-white/10 rounded-lg border border-white/[0.05] sm:border-0 transition-all cursor-pointer flex items-center justify-center min-w-[32px] min-h-[32px] sm:min-w-0 sm:min-h-0"
+                          title="Move Up"
+                        >
+                          <ArrowUp className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                        </button>
+
+                        {/* Move Down Button */}
+                        <button
+                          onClick={() => moveDown(index)}
+                          disabled={index === queue.length - 1}
+                          className="p-2 sm:p-1.5 text-white/40 hover:text-white disabled:text-white/10 disabled:cursor-not-allowed hover:bg-white/10 rounded-lg border border-white/[0.05] sm:border-0 transition-all cursor-pointer flex items-center justify-center min-w-[32px] min-h-[32px] sm:min-w-0 sm:min-h-0"
+                          title="Move Down"
+                        >
+                          <ArrowDown className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                        </button>
+
+                        {/* Trash Delete Button */}
+                        <button
+                          onClick={() => removeTrack(track.id)}
+                          className="p-2 sm:p-1.5 text-white/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg border border-red-500/10 sm:border-0 transition-all cursor-pointer flex items-center justify-center min-w-[32px] min-h-[32px] sm:min-w-0 sm:min-h-0"
+                          title="Remove from queue"
+                        >
+                          <Trash2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </motion.div>
                 );
