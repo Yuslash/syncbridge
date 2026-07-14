@@ -579,7 +579,7 @@ export function QueuePanel({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
+          <div className="flex flex-col gap-2 max-h-[250px] sm:max-h-[380px] md:max-h-[500px] overflow-y-auto overscroll-y-contain touch-pan-y custom-scrollbar pr-1">
             <AnimatePresence initial={false}>
               {queue.map((track, index) => {
                 const isDragging = draggedIndex === index;
@@ -635,7 +635,7 @@ export function QueuePanel({
                       />
                       <button
                         onClick={() => onPlayNextImmediate(track)}
-                        className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                        className="absolute inset-0 bg-black/60 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center transition-opacity"
                         title="Play song now"
                       >
                         <Play className="w-3.5 h-3.5 text-white fill-current" />
@@ -654,6 +654,16 @@ export function QueuePanel({
 
                     {/* Action buttons (Arrows + Delete) */}
                     <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {/* Play instantly Button */}
+                      <button
+                        onClick={() => onPlayNextImmediate(track)}
+                        className="px-2 py-1 sm:px-2.5 sm:py-1 text-[9px] font-extrabold uppercase tracking-widest text-blue-400 hover:text-white bg-blue-400/10 hover:bg-blue-400 border border-blue-400/20 hover:border-blue-400 rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                        title="Play song now"
+                      >
+                        <Play className="w-2.5 h-2.5 fill-current" />
+                        <span>Play</span>
+                      </button>
+
                       {/* Move Up Button */}
                       <button
                         onClick={() => moveUp(index)}

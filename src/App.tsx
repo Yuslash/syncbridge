@@ -183,6 +183,9 @@ export default function App() {
   const [queue, setQueue] = useState<MatchedTrack[]>([]);
   const [previousTracks, setPreviousTracks] = useState<MatchedTrack[]>([]);
   const [activeSingleTrack, setActiveSingleTrack] = useState<MatchedTrack | null>(null);
+  const [playedFromQueue, setPlayedFromQueue] = useState(false);
+  const [showQueueEndModal, setShowQueueEndModal] = useState(false);
+  const [endedTrackToReplay, setEndedTrackToReplay] = useState<MatchedTrack | null>(null);
   const [isLoadingSong, setIsLoadingSong] = useState(false);
   const [showChangeSongModal, setShowChangeSongModal] = useState(false);
   const [changeSongSuggestions, setChangeSongSuggestions] = useState<any[]>([]);
@@ -215,6 +218,7 @@ export default function App() {
       });
     }
 
+    setPlayedFromQueue(false);
     setActiveSingleTrack(track);
     setActivePlayingTrackId(track.id);
     setIsPlaying(true);
@@ -249,6 +253,7 @@ export default function App() {
       
       setPreviousTracks(past);
       
+      setPlayedFromQueue(false);
       setActiveSingleTrack(track);
       setActivePlayingTrackId(track.id);
       setIsPlaying(true);
@@ -278,6 +283,7 @@ export default function App() {
       
       setQueue(remainingUpcoming);
       
+      setPlayedFromQueue(true);
       setActiveSingleTrack(track);
       setActivePlayingTrackId(track.id);
       setIsPlaying(true);
@@ -308,6 +314,7 @@ export default function App() {
 
       setQueue(prev => prev.slice(1));
       
+      setPlayedFromQueue(true);
       setActiveSingleTrack(nextTrack);
       setActivePlayingTrackId(nextTrack.id);
       setIsPlaying(true);
@@ -793,6 +800,26 @@ export default function App() {
   };
 
   const playbackProgressTimerNextTrigger = () => {
+    // If the track was played from the queue and the queue is now empty, show the queue-end modal
+    if (playedFromQueue && queue.length === 0) {
+      if (currentPlayingTrack) {
+        setEndedTrackToReplay(currentPlayingTrack);
+        setShowQueueEndModal(true);
+        setIsPlaying(false);
+        // Stop audio playback
+        if (nativeAudioRef.current) {
+          nativeAudioRef.current.pause();
+        }
+        if (playerIframeRef.current) {
+          playerIframeRef.current.contentWindow?.postMessage(
+            JSON.stringify({ event: "command", func: "pauseVideo", args: [] }),
+            "*"
+          );
+        }
+      }
+      return;
+    }
+
     if (repeatMode === 'none') {
       const currentIndex = playableTracks.findIndex(t => t.id === activePlayingTrackId);
       if (currentIndex === playableTracks.length - 1) {
@@ -804,6 +831,29 @@ export default function App() {
     } else {
       handleSkipNext();
     }
+  };
+
+  const handleReplayEndedTrack = () => {
+    if (endedTrackToReplay) {
+      handlePlayTrack(endedTrackToReplay);
+      setPlayedFromQueue(true); // Keep the queue context active so it triggers again on end
+    }
+    setShowQueueEndModal(false);
+  };
+
+  const handleCloseAndResetEndedTrack = () => {
+    if (endedTrackToReplay) {
+      setPreviousTracks(prev => {
+        if (prev.length > 0 && prev[prev.length - 1].id === endedTrackToReplay.id) return prev;
+        return [...prev, endedTrackToReplay];
+      });
+    }
+    setActiveSingleTrack(null);
+    setActivePlayingTrackId(null);
+    setIsPlaying(false);
+    setCurrentTimeSecs(0);
+    setTrackDurationSecs(180);
+    setShowQueueEndModal(false);
   };
 
   // Listen for YouTube Embed player events to trigger authentic seamless track progression
@@ -1020,9 +1070,9 @@ export default function App() {
       
       const targetAmplitude = isPlaying ? 10 : 1.5;
       const waveColors = [
-        "rgba(29, 185, 84, 0.45)",
-        "rgba(52, 211, 153, 0.25)",
-        "rgba(16, 185, 129, 0.15)"
+        "rgba(96, 165, 250, 0.5)",
+        "rgba(34, 211, 238, 0.3)",
+        "rgba(129, 140, 248, 0.2)"
       ];
       
       waveColors.forEach((color, index) => {
@@ -1031,7 +1081,7 @@ export default function App() {
         ctx.lineWidth = index === 0 ? 2 : 1.2;
         
         ctx.shadowBlur = isPlaying ? 8 : 0;
-        ctx.shadowColor = "#1DB954";
+        ctx.shadowColor = "#60A5FA";
         
         const frequencyMultiplier = 0.008 + index * 0.004;
         const phaseOffset = index * Math.PI * 0.5;
@@ -1964,7 +2014,7 @@ export default function App() {
                                     {pl.name}
                                   </h4>
                                   {pl.isSynced && user ? (
-                                    <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-mono uppercase">
+                                    <span className="flex items-center gap-1 text-[9px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 font-mono uppercase">
                                       <Cloud className="w-2.5 h-2.5" /> Synced
                                     </span>
                                   ) : (
@@ -2393,16 +2443,16 @@ export default function App() {
                 <div className="flex flex-col gap-4 mb-6">
                    <div>
                      <label className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-2 block">Playlist Name</label>
-                     <input type="text" value={saveCustomName} onChange={e => setSaveCustomName(e.target.value)} className="w-full h-11 bg-[#18181b] border border-[#27272a] rounded-xl px-4 text-sm text-white focus:outline-none focus:border-[#1DB954]" placeholder="e.g. My Awesome Mix" />
+                     <input type="text" value={saveCustomName} onChange={e => setSaveCustomName(e.target.value)} className="w-full h-11 bg-[#18181b] border border-[#27272a] rounded-xl px-4 text-sm text-white focus:outline-none focus:border-blue-400" placeholder="e.g. My Awesome Mix" />
                    </div>
                    <div>
                      <label className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-2 block">Description (Optional)</label>
-                     <input type="text" value={saveCustomDesc} onChange={e => setSaveCustomDesc(e.target.value)} className="w-full h-11 bg-[#18181b] border border-[#27272a] rounded-xl px-4 text-sm text-white focus:outline-none focus:border-[#1DB954]" />
+                     <input type="text" value={saveCustomDesc} onChange={e => setSaveCustomDesc(e.target.value)} className="w-full h-11 bg-[#18181b] border border-[#27272a] rounded-xl px-4 text-sm text-white focus:outline-none focus:border-blue-400" />
                    </div>
                 </div>
                 <div className="flex gap-3 justify-end">
                   <button onClick={() => setShowSaveModal(false)} className="px-5 py-2 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-[#27272a] transition-all cursor-pointer">Cancel</button>
-                  <button onClick={executeManualSave} className="px-5 py-2 rounded-xl text-sm font-semibold text-white bg-[#1DB954] hover:bg-emerald-500 transition-all focus:outline-none shadow-[0_0_15px_rgba(29,185,84,0.15)] flex items-center gap-2 cursor-pointer"><Save className="w-4 h-4"/> Save</button>
+                  <button onClick={executeManualSave} className="px-5 py-2 rounded-xl text-sm font-semibold text-white bg-blue-400 hover:bg-blue-300 transition-all focus:outline-none shadow-[0_0_15px_rgba(96,165,250,0.25)] flex items-center gap-2 cursor-pointer"><Save className="w-4 h-4"/> Save</button>
                 </div>
               </motion.div>
             </motion.div>
@@ -2443,7 +2493,7 @@ export default function App() {
                 {/* Modal Header */}
                 <div className="flex items-center justify-between gap-4 mb-4">
                   <div className="min-w-0 flex-1">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-[#1DB954] bg-[#1DB954]/10 border border-[#1DB954]/20 px-2.5 py-0.5 rounded-full select-none">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-blue-400 bg-blue-400/10 border border-blue-400/20 px-2.5 py-0.5 rounded-full select-none">
                       Dynamic Match Playback Preview
                     </span>
                     <h3 className="text-base md:text-lg font-bold text-white truncate mt-2" title={previewVideo.videoTitle}>
@@ -2482,7 +2532,7 @@ export default function App() {
                     href={previewVideo.videoUrl} 
                     target="_blank" 
                     rel="noreferrer" 
-                    className="flex-shrink-0 text-[#1DB954] hover:underline flex items-center gap-1.5 font-bold transition-all"
+                    className="flex-shrink-0 text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1.5 font-bold transition-all"
                   >
                     <ExternalLink className="w-3.5 h-3.5" /> Watch on YouTube
                   </a>
@@ -2520,13 +2570,13 @@ export default function App() {
                 : 0,
             borderRadius: isVideoFullscreen && showPlayerVideoPreview ? 0 : 16,
             borderWidth: isVideoFullscreen && showPlayerVideoPreview ? 0 : 2,
-            borderColor: isVideoFullscreen && showPlayerVideoPreview ? "transparent" : "#1DB954",
+            borderColor: isVideoFullscreen && showPlayerVideoPreview ? "transparent" : "#60A5FA",
             opacity: showPlayerVideoPreview ? 1 : 0,
             scale: showPlayerVideoPreview ? 1 : 0.85,
             pointerEvents: showPlayerVideoPreview ? "auto" : "none",
             boxShadow: isVideoFullscreen && showPlayerVideoPreview 
               ? "none" 
-              : "0 10px 40px rgba(0,0,0,0.5), 0 0 20px rgba(29,185,84,0.15)",
+              : "0 10px 40px rgba(0,0,0,0.5), 0 0 20px rgba(96,165,250,0.25)",
             zIndex: showPlayerVideoPreview ? 50 : -999,
           }}
           transition={{
@@ -2636,7 +2686,7 @@ export default function App() {
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <Music className="w-5 h-5 text-[#1DB954]" />
+                  <Music className="w-5 h-5 text-blue-400" />
                 )}
                 
                 {/* Real aesthetic design: the reflective vinyl ridge curves and metallic dot core, making it feel 100% like premium audio equipment */}
@@ -2670,7 +2720,7 @@ export default function App() {
                     onClick={() => setShowPlayerVideoPreview(!showPlayerVideoPreview)}
                     className={`inline-flex items-center gap-1 text-[8px] font-bold border px-1.5 py-0.5 rounded uppercase tracking-wide cursor-pointer transition-all ${
                       showPlayerVideoPreview
-                        ? "text-[#1DB954] bg-[#1DB954]/10 border-[#1DB954]/30"
+                        ? "text-blue-400 bg-blue-400/10 border-blue-400/30"
                         : "text-zinc-400 hover:text-white bg-zinc-850/20 border-zinc-700/50 hover:bg-zinc-800/40"
                     }`}
                     title="Toggle Floating Live Video Feed Screen"
@@ -2690,12 +2740,12 @@ export default function App() {
                 <button
                   onClick={() => setIsShuffled(!isShuffled)}
                   className={`p-1.5 rounded-full transition-colors relative cursor-pointer ${
-                    isShuffled ? "text-[#1DB954]" : "text-zinc-500 hover:text-white"
+                    isShuffled ? "text-blue-400" : "text-zinc-500 hover:text-white"
                   }`}
                   title={isShuffled ? "Shuffle active" : "Shuffle tracks"}
                 >
                   <Shuffle className="w-3.5 h-3.5" />
-                  {isShuffled && <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#1DB954]" />}
+                  {isShuffled && <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-400 shadow-[0_0_5px_rgba(96,165,250,0.8)]" />}
                 </button>
 
                 {/* Previous */}
@@ -2707,16 +2757,16 @@ export default function App() {
                   <SkipBack className="w-4 h-4 fill-current" />
                 </button>
 
-                {/* Play/Pause Green Orb Circle */}
+                {/* Play/Pause Blue Orb Circle */}
                 <button
                   onClick={() => setIsPlaying(!isPlaying)}
-                  className="w-9 h-9 rounded-full bg-[#1DB954] text-[#09090b] flex items-center justify-center shadow-lg cursor-pointer hover:scale-105 active:scale-95 transition-all text-center focus:outline-none"
+                  className="w-9 h-9 rounded-full bg-blue-400 text-black flex items-center justify-center shadow-[0_0_15px_rgba(96,165,250,0.45)] hover:bg-blue-300 hover:shadow-[0_0_20px_rgba(96,165,250,0.65)] cursor-pointer hover:scale-105 active:scale-95 transition-all text-center focus:outline-none"
                   title={isPlaying ? "Pause" : "Play"}
                 >
                   {isPlaying ? (
-                    <Pause className="w-3.5 h-3.5 fill-current text-[#09090b]" />
+                    <Pause className="w-3.5 h-3.5 fill-current text-black" />
                   ) : (
-                    <Play className="w-3.5 h-3.5 fill-current ml-0.5 text-[#09090b]" />
+                    <Play className="w-3.5 h-3.5 fill-current ml-0.5 text-black" />
                   )}
                 </button>
 
@@ -2737,16 +2787,16 @@ export default function App() {
                     else setRepeatMode('all');
                   }}
                   className={`p-1.5 rounded-full transition-colors relative cursor-pointer ${
-                    repeatMode !== 'none' ? "text-[#1DB954]" : "text-zinc-500 hover:text-white"
+                    repeatMode !== 'none' ? "text-blue-400" : "text-zinc-500 hover:text-white"
                   }`}
                   title={repeatMode === 'one' ? "Repeat One" : repeatMode === 'all' ? "Repeat All" : "Repeat Disabled"}
                 >
                   <Repeat className="w-3.5 h-3.5" />
                   {repeatMode !== 'none' && (
-                    <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#1DB954]" />
+                    <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-400 shadow-[0_0_5px_rgba(96,165,250,0.8)]" />
                   )}
                   {repeatMode === 'one' && (
-                    <span className="absolute -top-1 -right-1 text-[7px] font-bold bg-[#1DB954] text-[#09090b] rounded-full w-2.5 h-2.5 flex items-center justify-center scale-90">1</span>
+                    <span className="absolute -top-1 -right-1 text-[7px] font-bold bg-blue-400 text-black rounded-full w-2.5 h-2.5 flex items-center justify-center scale-90 shadow-[0_0_4px_rgba(96,165,250,0.6)]">1</span>
                   )}
                 </button>
               </div>
@@ -2779,9 +2829,9 @@ export default function App() {
                           max={trackDurationSecs}
                           value={displayTimeSecs}
                           onChange={(e) => handleTimelineChange(parseInt(e.target.value, 10))}
-                          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#1DB954] outline-none group-hover:bg-zinc-700 transition-all"
+                          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-400 outline-none group-hover:bg-zinc-700 transition-all"
                           style={{
-                            background: `linear-gradient(to right, #1DB954 ${
+                            background: `linear-gradient(to right, #60A5FA ${
                               (displayTimeSecs / trackDurationSecs) * 100
                             }%, #27272a ${(displayTimeSecs / trackDurationSecs) * 100}%)`,
                           }}
@@ -2804,13 +2854,13 @@ export default function App() {
             <div className="flex items-center justify-end gap-2.5 w-full md:w-1/4">
               <button
                 onClick={() => setIsMuted(!isMuted)}
-                className="p-1.5 text-zinc-400 hover:text-[#1DB954] transition-colors cursor-pointer"
+                className="p-1.5 text-zinc-400 hover:text-blue-400 transition-colors cursor-pointer"
                 title={isMuted ? "Unmute sound" : "Mute sound"}
               >
                 {isMuted || playbackVolume === 0 ? (
                   <VolumeX className="w-4 h-4 text-red-500 animate-pulse" />
                 ) : (
-                  <Volume2 className="w-4 h-4 text-[#1DB954]" />
+                  <Volume2 className="w-4 h-4 text-blue-400" />
                 )}
               </button>
 
@@ -2825,9 +2875,9 @@ export default function App() {
                     handleVolumeChange(vol);
                     if (isMuted && vol > 0) setIsMuted(false);
                   }}
-                  className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#1DB954] outline-none group-hover:bg-zinc-700 transition-all"
+                  className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-400 outline-none group-hover:bg-zinc-700 transition-all"
                   style={{
-                    background: `linear-gradient(to right, #1DB954 ${
+                    background: `linear-gradient(to right, #60A5FA ${
                       isMuted ? 0 : playbackVolume
                     }%, #27272a ${isMuted ? 0 : playbackVolume}%)`,
                   }}
@@ -2841,10 +2891,10 @@ export default function App() {
               {/* Seamless Button to Launch App on Full Tab context for perfect sound */}
               <button
                 onClick={() => window.open(window.location.href, '_blank')}
-                className="ml-1 px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-[#1DB954] rounded-lg shadow-md transition-all cursor-pointer flex items-center gap-1.5 text-[9px] tracking-wide font-bold uppercase"
+                className="ml-1 px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-blue-400 rounded-lg shadow-md transition-all cursor-pointer flex items-center gap-1.5 text-[9px] tracking-wide font-bold uppercase"
                 title="Launch Playback in a standard Browser Tab to bypass frame cross-origin autoplay restrictions and hear premium output audio instantly!"
               >
-                <Maximize2 className="w-3 h-3 text-[#1DB954] animate-pulse" />
+                <Maximize2 className="w-3 h-3 text-blue-400 animate-pulse" />
                 <span className="hidden xl:inline">New Tab</span>
               </button>
             </div>
@@ -2883,7 +2933,7 @@ export default function App() {
                 <div className="relative flex-1">
                   <input
                     type="text"
-                    className="w-full h-10 bg-[#121214] border border-[#27272a] rounded-lg pl-9 pr-4 text-xs text-[#fafafa] placeholder-zinc-500 focus:outline-none focus:border-[#1DB954] transition-colors"
+                    className="w-full h-10 bg-[#121214] border border-[#27272a] rounded-lg pl-9 pr-4 text-xs text-[#fafafa] placeholder-zinc-500 focus:outline-none focus:border-blue-400 transition-colors"
                     value={changeSearchQuery}
                     onChange={(e) => setChangeSearchQuery(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && fetchChangeSuggestions(changeSearchQuery)}
@@ -2893,7 +2943,7 @@ export default function App() {
                 <button
                   onClick={() => fetchChangeSuggestions(changeSearchQuery)}
                   disabled={searchingChangeSuggestions}
-                  className="px-4 bg-[#1DB954] hover:bg-[#1ed760] text-black text-xs font-bold rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 cursor-pointer"
+                  className="px-4 bg-blue-400 hover:bg-blue-300 text-black text-xs font-bold rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 cursor-pointer shadow-[0_0_10px_rgba(96,165,250,0.3)]"
                 >
                   Search
                 </button>
@@ -2903,7 +2953,7 @@ export default function App() {
               <div className="flex-1 overflow-y-auto divide-y divide-[#27272a]/40 p-2 custom-scrollbar">
                 {searchingChangeSuggestions ? (
                   <div className="py-12 flex flex-col items-center justify-center gap-3 text-zinc-500 text-xs">
-                    <Loader2 className="w-6 h-6 animate-spin text-[#1DB954]" />
+                    <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
                     <span>Searching YouTube candidates...</span>
                   </div>
                 ) : changeSongSuggestions.length === 0 ? (
@@ -2924,7 +2974,7 @@ export default function App() {
                         referrerPolicy="no-referrer"
                       />
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-xs font-bold text-white truncate group-hover:text-[#1DB954] transition-colors">
+                        <h4 className="text-xs font-bold text-white truncate group-hover:text-blue-400 transition-colors">
                           {suggestion.title}
                         </h4>
                         <p className="text-[10px] text-zinc-400 mt-0.5 truncate">
@@ -2934,6 +2984,70 @@ export default function App() {
                     </button>
                   ))
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal for Queue / Track Playback End Options */}
+      <AnimatePresence>
+        {showQueueEndModal && endedTrackToReplay && (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-[#0c0c0e] border border-zinc-800/80 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl shadow-blue-500/10 flex flex-col p-6 text-center"
+            >
+              <div className="mx-auto w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4 text-blue-400">
+                <Music className="w-6 h-6" />
+              </div>
+
+              <h3 className="text-lg font-bold text-white tracking-tight">Queue Finished!</h3>
+              <p className="text-xs text-zinc-400 mt-1 max-w-xs mx-auto">
+                You've reached the end of your active queue. What would you like to do with the last song?
+              </p>
+
+              {/* Last Ended Track Preview Card */}
+              <div className="mt-5 mb-6 p-4 bg-zinc-950/50 rounded-xl border border-zinc-900/60 flex items-center gap-3 text-left">
+                {endedTrackToReplay.artworkUrl ? (
+                  <img
+                    src={endedTrackToReplay.artworkUrl}
+                    alt={endedTrackToReplay.title}
+                    className="w-12 h-12 object-cover rounded-lg border border-zinc-800"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
+                    <Music className="w-5 h-5" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-xs font-bold text-white truncate">{endedTrackToReplay.title}</h4>
+                  <p className="text-[10px] text-zinc-400 mt-0.5 truncate">{endedTrackToReplay.artist}</p>
+                </div>
+                <div className="text-[10px] text-zinc-500 font-mono bg-zinc-900 px-2 py-1 rounded">
+                  Ended
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleCloseAndResetEndedTrack}
+                  className="px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800/80 hover:border-zinc-700/80 text-zinc-300 hover:text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Close &amp; Reset
+                </button>
+                <button
+                  onClick={handleReplayEndedTrack}
+                  className="px-4 py-2.5 bg-blue-400 hover:bg-blue-300 text-black text-xs font-bold rounded-xl shadow-[0_0_15px_rgba(96,165,250,0.3)] hover:shadow-[0_0_20px_rgba(96,165,250,0.5)] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Replay Song
+                </button>
               </div>
             </motion.div>
           </div>
