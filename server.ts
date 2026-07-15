@@ -634,13 +634,18 @@ async function fallbackSearchYouTube(query: string): Promise<YouTubeResult[]> {
   console.log(`[YouTube Fallback Scraper] Initiating robust scrape search for: "${query}"`);
   try {
     const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%253D%253D`;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second scraper timeout
+
     const response = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9",
         "Cookie": "SOCS=CAEQAw; CONSENT=YES+cb",
-      }
-    });
+      },
+      signal: controller.signal
+    }).finally(() => clearTimeout(timeoutId));
 
     if (!response.ok) {
       throw new Error(`YouTube scrape returned status code ${response.status}`);
@@ -868,8 +873,43 @@ function scoreCandidate(c: any, targetTitle: string, targetArtist: string): numb
 
 async function searchYouTubeWithFallback(query: string, limit: number = 10): Promise<any[]> {
   try {
+    // 1. Try official YouTube Data API first if key is present
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (apiKey) {
+      console.log(`[YouTube Search Wrapper] Using official YouTube API for query: "${query}"`);
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s timeout for official API
+        const apiResponse = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${limit}&q=${encodeURIComponent(query)}&key=${apiKey}`,
+          { signal: controller.signal }
+        ).finally(() => clearTimeout(timeoutId));
+
+        if (apiResponse.ok) {
+          const apiData = await apiResponse.json();
+          if (apiData.items && apiData.items.length > 0) {
+            console.log(`[YouTube Search Wrapper] Successfully returned ${apiData.items.length} items from official YouTube API`);
+            return apiData.items.map((item: any) => ({
+              id: item.id?.videoId,
+              title: item.snippet?.title || "Unknown Title",
+              channel: { name: item.snippet?.channelTitle || "Unknown Channel" },
+              durationFormatted: "3:00",
+              duration: 180000,
+              thumbnail: { url: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || "" }
+            })).filter((c: any) => c.id);
+          }
+        } else {
+          const errorText = await apiResponse.text();
+          console.warn(`[YouTube Search Wrapper] Official YouTube API returned error status ${apiResponse.status}:`, errorText);
+        }
+      } catch (apiErr: any) {
+        console.warn(`[YouTube Search Wrapper] Official YouTube API failed or timed out: ${apiErr?.message || apiErr}`);
+      }
+    }
+
+    // 2. Fallback to youtube-sr search (with a fast 2.5s promise timeout race to prevent serverless gateway timeout)
     console.log(`[YouTube Search Wrapper] Trying youtube-sr first for query: "${query}"`);
-    const candidates = await YouTube.search(query, { 
+    const searchPromise = YouTube.search(query, { 
       limit: limit,
       type: "video",
       requestOptions: {
@@ -880,6 +920,12 @@ async function searchYouTubeWithFallback(query: string, limit: number = 10): Pro
         }
       }  
     });
+
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error("youtube-sr search timed out")), 2500)
+    );
+
+    const candidates = await Promise.race([searchPromise, timeoutPromise]);
 
     if (!candidates || candidates.length === 0) {
       throw new Error("No candidates returned from youtube-sr");
@@ -1119,9 +1165,8 @@ app.post("/api/youtube-suggestions", async (req, res): Promise<any> => {
 async function startServer() {
   const isProduction = 
     process.env.NODE_ENV === "production" || 
-    __filename.includes("server.cjs") || 
-    __filename.includes("dist") || 
-    process.env.VERCEL === "1";
+    process.env.VERCEL === "1" ||
+    (typeof __filename !== "undefined" && (__filename.includes("server.cjs") || __filename.includes("dist")));
 
   if (!isProduction) {
     const viteModule = "vite";
