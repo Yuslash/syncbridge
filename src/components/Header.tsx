@@ -8,9 +8,19 @@ interface HeaderProps {
   onLogout: () => void;
   isCloudActive: boolean;
   onGoHome: () => void;
+  onShowChangelog?: () => void;
+  version?: string;
 }
 
-export function Header({ user, onLogin, onLogout, isCloudActive, onGoHome }: HeaderProps) {
+export function Header({ 
+  user, 
+  onLogin, 
+  onLogout, 
+  isCloudActive, 
+  onGoHome,
+  onShowChangelog,
+  version = "1.2.1"
+}: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/5 bg-[#0a0a0a]/20 backdrop-blur-md shadow-xl">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 sm:h-16 md:h-20 flex items-center justify-between gap-4">
@@ -28,14 +38,21 @@ export function Header({ user, onLogin, onLogout, isCloudActive, onGoHome }: Hea
           </div>
  
           {/* Logo Typography and dynamic sub-tagging */}
-          <div className="flex flex-col text-left">
+          <div className="flex flex-col text-left text-zinc-300">
             <div className="flex items-center gap-1 sm:gap-1.5 leading-none">
               <span className="font-sans tracking-wide text-white text-base sm:text-lg md:text-2xl font-bold accent-glow">
                 Sync<span className="text-blue-400 font-extralight">Bridge</span>
               </span>
-              <span className="text-[7px] sm:text-[8px] font-mono font-black uppercase text-blue-200 bg-blue-950/40 border border-white/10 rounded px-1 py-0.5 tracking-wider leading-none select-none hidden xs:inline-block">
-                GLASS ENGINE
-              </span>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onShowChangelog?.();
+                }}
+                className="text-[7px] sm:text-[9px] font-mono font-bold uppercase text-blue-300 hover:text-white bg-blue-950/40 border border-blue-400/20 hover:border-blue-400 rounded px-1.5 py-0.5 tracking-wider leading-none select-none hidden xs:inline-block cursor-pointer transition-all hover:scale-105 active:scale-95"
+                title="View Changelog & Updates"
+              >
+                v{version}
+              </button>
             </div>
             {/* Minimalist, professional sublabel - replaces messy color-block badges */}
             <span className="text-[7px] sm:text-[9px] font-mono tracking-[0.1em] sm:tracking-[0.18em] text-zinc-400 mt-1 uppercase transition-colors duration-300 group-hover:text-white leading-none">
