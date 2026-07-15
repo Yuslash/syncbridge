@@ -17,7 +17,7 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
 
   const isValidLink = (text: string): boolean => {
     const cleanText = text.trim();
-    const isYT = /youtube\.com|youtu\.be|youtube-nocookie\.com/i.test(cleanText);
+    const isYT = /youtube\.com|youtu\.be|youtube-nocookie\.com/i.test(cleanText) || /^[a-zA-Z0-9_-]{11}$/.test(cleanText);
     const isSpotify = /open\.spotify\.com/i.test(cleanText);
     return isYT || isSpotify;
   };
@@ -32,18 +32,61 @@ export function QuickPlayPanel({ onPlayTrack, isLoadingSong, setIsLoadingSong }:
       
       // Spotify track link
       if (/open\.spotify\.com\/track\//i.test(cleanUrl)) {
-        const response = await fetch("/api/spotify-track-details", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: cleanUrl }),
-        });
+        let spotifyTrack: any = null;
 
-        if (!response.ok) {
-          throw new Error("Failed to resolve Spotify track details");
+        // Try direct browser oEmbed fetch first (100% reliable from client IP, CORS-supported)
+        try {
+          const oEmbedResponse = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(cleanUrl)}`);
+          if (oEmbedResponse.ok) {
+            const oEmbedData = await oEmbedResponse.json();
+            if (oEmbedData && oEmbedData.title) {
+              const oTitle = oEmbedData.title;
+              let title = oTitle;
+              let artist = oEmbedData.provider_name || "Spotify Artist";
+
+              const matchSongBy = oTitle.match(/^([\s\S]*?)\s+-\s+song\s+by\s+([\s\S]*?)$/i);
+              const matchSongLyricsBy = oTitle.match(/^([\s\S]*?)\s+-\s+song\s+and\s+lyrics\s+by\s+([\s\S]*?)$/i);
+
+              if (matchSongLyricsBy) {
+                title = matchSongLyricsBy[1].trim();
+                artist = matchSongLyricsBy[2].trim();
+              } else if (matchSongBy) {
+                title = matchSongBy[1].trim();
+                artist = matchSongBy[2].trim();
+              }
+
+              spotifyTrack = {
+                title,
+                artist,
+                album: "",
+                durationMs: 180000,
+                artworkUrl: oEmbedData.thumbnail_url || ""
+              };
+            }
+          }
+        } catch (clientErr) {
+          console.warn("[QuickPlay] Client-side Spotify oEmbed failed, falling back to server...", clientErr);
         }
 
-        const data = await response.json();
-        const spotifyTrack = data.track;
+        // Fallback to server if browser fetch failed or had missing details
+        if (!spotifyTrack) {
+          const response = await fetch("/api/spotify-track-details", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: cleanUrl }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to resolve Spotify track details");
+          }
+
+          const data = await response.json();
+          spotifyTrack = data.track;
+        }
+
+        if (!spotifyTrack) {
+          throw new Error("Could not parse Spotify track details.");
+        }
 
         // Search YouTube to get matched video
         const searchResponse = await fetch("/api/search-youtube", {

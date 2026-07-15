@@ -55,7 +55,9 @@ export function QueuePanel({
 
   const isValidLink = (text: string): boolean => {
     const cleanText = text.trim();
-    return /youtube\.com|youtu\.be|youtube-nocookie\.com/i.test(cleanText) || /open\.spotify\.com/i.test(cleanText);
+    const isYT = /youtube\.com|youtu\.be|youtube-nocookie\.com/i.test(cleanText) || /^[a-zA-Z0-9_-]{11}$/.test(cleanText);
+    const isSpotify = /open\.spotify\.com/i.test(cleanText);
+    return isYT || isSpotify;
   };
 
   const handleLinkAdd = async (url: string) => {
@@ -584,7 +586,7 @@ export function QueuePanel({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-2 max-h-[280px] sm:max-h-[380px] md:max-h-[500px] overflow-y-auto overscroll-y-contain touch-pan-y custom-scrollbar pr-1">
+          <div className="flex flex-col gap-2 max-h-[350px] sm:max-h-[380px] md:max-h-[500px] overflow-y-auto overscroll-y-contain touch-pan-y custom-scrollbar pr-1">
             <AnimatePresence initial={false}>
               {queue.map((track, index) => {
                 const isDragging = draggedIndex === index;

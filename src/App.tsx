@@ -806,8 +806,8 @@ export default function App() {
       return;
     }
 
-    // If the track was played from the queue and the queue is now empty, show the queue-end modal
-    if (playedFromQueue && queue.length === 0) {
+    // If the track was played from the queue, the queue is empty, and there are no playable tracks, show the queue-end modal
+    if (playedFromQueue && queue.length === 0 && playableTracks.length === 0) {
       if (currentPlayingTrack) {
         setEndedTrackToReplay(currentPlayingTrack);
         setShowQueueEndModal(true);
@@ -828,7 +828,7 @@ export default function App() {
 
     if (repeatMode === 'none') {
       const currentIndex = playableTracks.findIndex(t => t.id === activePlayingTrackId);
-      if (currentIndex === playableTracks.length - 1) {
+      if (currentIndex !== -1 && currentIndex === playableTracks.length - 1) {
         setIsPlaying(false);
         setCurrentTimeSecs(0);
       } else {
@@ -915,7 +915,7 @@ export default function App() {
               }
               setCurrentTimeSecs(0);
             } else {
-              playbackProgressTimerNextTrigger();
+              playbackProgressTimerNextTriggerRef.current();
             }
           }
         } else if (data && data.info) {
@@ -959,20 +959,20 @@ export default function App() {
     };
   }, [repeatMode, activePlayingTrackId, playableTracks, trackDurationSecs, useNativeAudio]);
 
-  // Local counting timer clock for 100% responsive timeline slider updates
+  // Local counting timer clock for 100% responsive timeline slider updates and reliable fallback track progression
   useEffect(() => {
     // If we're using native background audio, its own 'timeupdate' event handles setting currentTimeSecs perfectly!
     if (useNativeAudio) return;
 
     let timerId: any = null;
-    // Only tick locally if the player is set to play AND we either haven't received YouTube API messages yet, OR the YouTube player state is actively playing (1)
-    const shouldTick = isPlaying && activePlayingTrackId && (!hasReceivedYtMessages.current || ytPlayerState === 1);
+    // Always tick locally if playing, to ensure smooth timing and robust track ending triggers
+    const shouldTick = isPlaying && activePlayingTrackId;
 
     if (shouldTick) {
       timerId = setInterval(() => {
         setCurrentTimeSecs(prev => {
-          // Track plays for full YouTube duration. Grace buffer of 15s to guarantee no clipping!
-          if (prev >= trackDurationSecs + 15) {
+          // Trigger next track precisely when the song length is reached (with a safe 2-second buffer for buffering/lag)
+          if (trackDurationSecs > 10 && prev >= trackDurationSecs + 2) {
             if (repeatMode === 'one') {
               if (playerIframeRef.current) {
                 playerIframeRef.current.contentWindow?.postMessage(
@@ -982,7 +982,7 @@ export default function App() {
               }
               return 0;
             } else {
-              playbackProgressTimerNextTrigger();
+              playbackProgressTimerNextTriggerRef.current();
               return prev;
             }
           }
@@ -993,7 +993,7 @@ export default function App() {
     return () => {
       if (timerId) clearInterval(timerId);
     };
-  }, [isPlaying, activePlayingTrackId, trackDurationSecs, repeatMode, playableTracks, ytPlayerState, useNativeAudio]);
+  }, [isPlaying, activePlayingTrackId, trackDurationSecs, repeatMode, playableTracks, useNativeAudio]);
 
   // Volume and mute controls synchronizer
   useEffect(() => {
@@ -1425,28 +1425,101 @@ export default function App() {
       setLoadingStep("fetching");
       setLoadingMessage("Connecting to Spotify public portal...");
       
-      const spotifyRes = await fetch("/api/parse-spotify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: targetUrl })
-      });
+      let playlistDetails: any = null;
+      let isApiKeyError = false;
 
-      if (!spotifyRes.ok) {
-        const errJson = await spotifyRes.json();
-        if (errJson.isApiKeyError) {
-          setApiKeyErrorDetails({
-            error: errJson.error,
-            suggestedFix: errJson.suggestedFix
-          });
+      try {
+        const spotifyRes = await fetch("/api/parse-spotify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: targetUrl })
+        });
+
+        if (spotifyRes.ok) {
+          playlistDetails = await spotifyRes.json();
+        } else {
+          const errText = await spotifyRes.text();
+          let errJson: any = {};
+          try {
+            errJson = JSON.parse(errText);
+          } catch (_) {}
+
+          if (errJson.isApiKeyError) {
+            setApiKeyErrorDetails({
+              error: errJson.error,
+              suggestedFix: errJson.suggestedFix
+            });
+            isApiKeyError = true;
+          }
+          console.warn("[App Conversion] Server-side playlist parse failed, trying client-side fallback...", errJson.error || errText);
         }
-        throw new Error(errJson.error || "Failed to process Spotify link. Verify it is public.");
+      } catch (serverErr) {
+        console.warn("[App Conversion] Server-side playlist fetch threw error, trying client-side fallback...", serverErr);
       }
 
-      // Step 2: Extraction completed via Gemini
+      // Client-side fallback using public CORS-free routing
+      if (!playlistDetails && !isApiKeyError) {
+        setLoadingMessage("Converting via high-speed client-side routing fallback...");
+        
+        const playlistIdMatch = targetUrl.match(/playlist\/([a-zA-Z0-9]{21,23})/);
+        const albumIdMatch = targetUrl.match(/album\/([a-zA-Z0-9]{21,23})/);
+        const playlistId = playlistIdMatch ? playlistIdMatch[1] : (albumIdMatch ? albumIdMatch[1] : null);
+        
+        if (!playlistId) {
+          throw new Error("Invalid Spotify link. Could not locate a valid playlist or album ID.");
+        }
+        
+        const isAlbum = !!albumIdMatch;
+        const embedUrl = isAlbum 
+          ? `https://open.spotify.com/embed/album/${playlistId}`
+          : `https://open.spotify.com/embed/playlist/${playlistId}`;
+        
+        // Try AllOrigins raw proxy
+        try {
+          const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(embedUrl)}`;
+          const response = await fetch(proxyUrl);
+          if (response.ok) {
+            const data = await response.json();
+            const html = data.contents;
+            if (html) {
+              const programResult = tryRegexAndJsonParse(html);
+              if (programResult && programResult.tracks.length > 0) {
+                playlistDetails = programResult;
+              }
+            }
+          }
+        } catch (clientErr) {
+          console.error("[App Conversion] Client-side AllOrigins proxy failed", clientErr);
+        }
+
+        // Try Codetabs raw proxy fallback
+        if (!playlistDetails) {
+          try {
+            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(embedUrl)}`;
+            const response = await fetch(proxyUrl);
+            if (response.ok) {
+              const html = await response.text();
+              if (html) {
+                const programResult = tryRegexAndJsonParse(html);
+                if (programResult && programResult.tracks.length > 0) {
+                  playlistDetails = programResult;
+                }
+              }
+            }
+          } catch (clientErr) {
+            console.error("[App Conversion] Client-side Codetabs proxy failed", clientErr);
+          }
+        }
+      }
+
+      if (!playlistDetails) {
+        throw new Error("Failed to load Spotify playlist or album. Please verify that the link is public and try again.");
+      }
+
+      // Step 2: Extraction completed via client-side/server-side mapping
       setLoadingStep("extracting");
-      setLoadingMessage("Parsing track lists seamlessly with Gemini AI metadata mapping...");
+      setLoadingMessage("Parsing track lists seamlessly with metadata mapping...");
       
-      const playlistDetails = await spotifyRes.json();
       const rawTracks: SpotifyTrack[] = playlistDetails.tracks;
 
       if (!rawTracks || rawTracks.length === 0) {
@@ -1683,7 +1756,7 @@ export default function App() {
   });
 
   return (
-    <div className="font-sans text-[#fafafa] min-h-screen flex flex-col pb-24 bg-[#09090b]">
+    <div className="font-sans text-[#fafafa] min-h-screen flex flex-col pb-[280px] sm:pb-32 bg-[#09090b]">
       <Header 
         user={user}
         onLogin={handleLogin}
@@ -3062,4 +3135,187 @@ export default function App() {
 
     </div>
   );
+}
+
+/**
+ * Client-Side Spotify HTML Scraper utilities for proxy routing fallback
+ */
+function isTrackObject(obj: any): boolean {
+  if (!obj || typeof obj !== 'object') return false;
+  const name = obj.name || obj.title;
+  if (typeof name !== 'string' || !name.trim()) return false;
+  return !!(obj.artists || obj.artist || obj.artistsNames || obj.albumOfTrack || obj.album);
+}
+
+function parseTrack(t: any) {
+  const title = t.name || t.title || "Unknown Title";
+  
+  let artist = "Unknown Artist";
+  if (Array.isArray(t.artists)) {
+    artist = t.artists
+      .map((a: any) => (typeof a === 'object' && a !== null ? (a.name || a.title || "") : String(a)))
+      .filter(Boolean)
+      .join(", ");
+  } else if (typeof t.artists === 'string') {
+    artist = t.artists;
+  } else if (t.artist) {
+    if (typeof t.artist === 'string') artist = t.artist;
+    else if (typeof t.artist === 'object' && t.artist !== null) artist = t.artist.name || t.artist.title || "Unknown Artist";
+  } else if (Array.isArray(t.artistsNames)) {
+    artist = t.artistsNames.filter(Boolean).join(", ");
+  } else if (t.profile && typeof t.profile === 'object') {
+    artist = t.profile.name || "Unknown Artist";
+  }
+
+  const album = (t.album && typeof t.album === 'object') ? (t.album.name || "") : (t.albumName || "");
+  
+  let artworkUrl = "";
+  if (t.album && typeof t.album === 'object' && Array.isArray(t.album.images) && t.album.images.length > 0) {
+    artworkUrl = t.album.images[0].url || "";
+  } else if (t.albumOfTrack && typeof t.albumOfTrack === 'object') {
+    const coverArt = t.albumOfTrack.coverArt;
+    if (coverArt && Array.isArray(coverArt.sources) && coverArt.sources.length > 0) {
+      artworkUrl = coverArt.sources[0].url || "";
+    }
+  } else if (Array.isArray(t.images) && t.images.length > 0) {
+    artworkUrl = t.images[0].url || "";
+  } else if (t.cover && typeof t.cover === 'object') {
+    if (Array.isArray(t.cover.images) && t.cover.images.length > 0) {
+      artworkUrl = t.cover.images[0].url || "";
+    } else if (Array.isArray(t.cover.sources) && t.cover.sources.length > 0) {
+      artworkUrl = t.cover.sources[0].url || "";
+    }
+  } else if (typeof t.artworkUrl === 'string') {
+    artworkUrl = t.artworkUrl;
+  } else if (typeof t.coverUrl === 'string') {
+    artworkUrl = t.coverUrl;
+  }
+
+  const durationMs = t.duration_ms || t.durationMs || 0;
+
+  return { title, artist, album, durationMs, artworkUrl };
+}
+
+function findPlaylistMeta(obj: any): { playlistName?: string; playlistDescription?: string } | null {
+  if (!obj || typeof obj !== 'object') return null;
+
+  if (obj.type === "playlist" || obj.type === "album") {
+    if (typeof obj.name === 'string') {
+      return {
+        playlistName: obj.name,
+        playlistDescription: obj.description || ""
+      };
+    }
+  }
+
+  if (typeof obj.playlistName === 'string' || typeof obj.name === 'string') {
+    if (obj.tracks && (Array.isArray(obj.tracks) || Array.isArray(obj.tracks.items))) {
+      return {
+        playlistName: obj.name || obj.playlistName,
+        playlistDescription: obj.description || ""
+      };
+    }
+  }
+
+  for (const key of Object.keys(obj)) {
+    if (typeof obj[key] === 'object' && obj[key] !== null) {
+      const meta = findPlaylistMeta(obj[key]);
+      if (meta && meta.playlistName) return meta;
+    }
+  }
+
+  return null;
+}
+
+function findTracksRecursive(val: any, foundLists: any[][]): void {
+  if (!val || typeof val !== 'object') return;
+
+  if (Array.isArray(val)) {
+    const candidateTracks: any[] = [];
+    for (const el of val) {
+      if (!el || typeof el !== 'object') continue;
+      const potentialTrack = el.track || el.item?.track || el;
+      if (isTrackObject(potentialTrack)) {
+        candidateTracks.push(parseTrack(potentialTrack));
+      }
+    }
+    if (candidateTracks.length > 0) {
+      foundLists.push(candidateTracks);
+    }
+    
+    for (const el of val) {
+      findTracksRecursive(el, foundLists);
+    }
+    return;
+  }
+
+  for (const key of Object.keys(val)) {
+    if (key !== 'parent' && typeof val[key] === 'object' && val[key] !== null) {
+      findTracksRecursive(val[key], foundLists);
+    }
+  }
+}
+
+function tryRegexAndJsonParse(html: string): { playlistName: string; playlistDescription: string; tracks: any[] } | null {
+  try {
+    const scriptRegex = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+    let match;
+    
+    let bestTracks: any[] = [];
+    let bestMeta: { playlistName?: string; playlistDescription?: string } | null = null;
+    let highestScore = -1;
+
+    while ((match = scriptRegex.exec(html)) !== null) {
+      let content = match[1].trim();
+      if (!content) continue;
+
+      if (content.includes("%7B") && content.includes("%22")) {
+        try {
+          content = decodeURIComponent(content);
+        } catch (_) {}
+      }
+
+      const firstCurly = content.indexOf("{");
+      const lastCurly = content.lastIndexOf("}");
+      if (firstCurly !== -1 && lastCurly !== -1 && lastCurly > firstCurly) {
+        const jsonStr = content.substring(firstCurly, lastCurly + 1);
+        try {
+          const parsed = JSON.parse(jsonStr);
+          
+          const currentMeta = findPlaylistMeta(parsed);
+          
+          const foundTrackLists: any[][] = [];
+          findTracksRecursive(parsed, foundTrackLists);
+          
+          for (const list of foundTrackLists) {
+            if (list.length === 0) continue;
+            
+            const artworkCount = list.filter(t => !!t.artworkUrl).length;
+            const score = list.length * 10 + artworkCount * 100;
+            
+            if (score > highestScore) {
+              highestScore = score;
+              bestTracks = list;
+              if (currentMeta && currentMeta.playlistName) {
+                bestMeta = currentMeta;
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore parse errors within script chunks
+        }
+      }
+    }
+
+    if (bestTracks.length > 0) {
+      return {
+        playlistName: bestMeta?.playlistName || "Imported Spotify Playlist",
+        playlistDescription: bestMeta?.playlistDescription || "",
+        tracks: bestTracks
+      };
+    }
+  } catch (err) {
+    console.error("[Spotify Local Parser Error]", err);
+  }
+  return null;
 }

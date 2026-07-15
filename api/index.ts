@@ -295,42 +295,86 @@ function cleanSpotifyHtml(html: string): string {
   return fallbackText.substring(0, 8000);
 }
 
+function extractYouTubeId(url: string): string | null {
+  if (!url || typeof url !== "string") return null;
+  const trimmed = url.trim();
+  if (trimmed.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
+  const match = trimmed.match(regExp);
+  if (match && match[2] && match[2].length === 11) {
+    return match[2];
+  }
+  const fallbackMatch = trimmed.match(/(?:v=|\/)([a-zA-Z0-9_\-]{11})/);
+  if (fallbackMatch && fallbackMatch[1]) {
+    return fallbackMatch[1];
+  }
+  return null;
+}
+
 // REST Endpoints
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+async function fetchYouTubeOEmbed(videoId: string): Promise<{ title: string; artist: string; artworkUrl: string } | null> {
+  try {
+    const oEmbedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+    const response = await fetch(oEmbedUrl);
+    if (response.ok) {
+      const data = await response.json();
+      if (data && typeof data === "object") {
+        return {
+          title: data.title || "YouTube Video",
+          artist: data.author_name || "YouTube Channel",
+          artworkUrl: data.thumbnail_url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[oEmbed Fallback Fetch Error]", err);
+  }
+  return null;
+}
+
 app.post("/api/youtube-details", async (req, res): Promise<any> => {
   const { url, videoId } = req.body || {};
+  const targetId = videoId || extractYouTubeId(url);
+  if (!targetId) {
+    return res.status(400).json({ error: "Could not extract a valid YouTube video ID from input" });
+  }
+
   try {
-    let targetUrl = url;
-    if (videoId && !targetUrl) {
-      targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    }
-    if (!targetUrl) {
-      return res.status(400).json({ error: "URL or videoId is required" });
-    }
+    const targetUrl = `https://www.youtube.com/watch?v=${targetId}`;
     const info = await YouTube.getVideo(targetUrl);
     return res.json({
       videoId: info.id,
-      title: info.title,
-      artist: info.channel?.name || "YouTube Video",
+      title: info.title || "YouTube Video",
+      artist: info.channel?.name || "YouTube Channel",
       durationMs: info.duration || 180000,
       artworkUrl: info.thumbnail?.url || `https://img.youtube.com/vi/${info.id}/mqdefault.jpg`
     });
   } catch (err: any) {
-    console.error("[YouTube Details Error]", err);
-    const parsedId = videoId || (url ? url.match(/(?:v=|\/)([a-zA-Z0-9_\-]{11})/)?.[1] : null);
-    if (parsedId) {
+    console.warn("[YouTube Details direct fetch failed, trying oEmbed fallback...]", err.message || err);
+    const oEmbedData = await fetchYouTubeOEmbed(targetId);
+    if (oEmbedData) {
       return res.json({
-        videoId: parsedId,
-        title: "YouTube Video",
-        artist: "YouTube Channel",
+        videoId: targetId,
+        title: oEmbedData.title,
+        artist: oEmbedData.artist,
         durationMs: 180000,
-        artworkUrl: `https://img.youtube.com/vi/${parsedId}/mqdefault.jpg`
+        artworkUrl: oEmbedData.artworkUrl
       });
     }
-    return res.status(500).json({ error: err.message || "Failed to fetch YouTube details" });
+
+    return res.json({
+      videoId: targetId,
+      title: "YouTube Video",
+      artist: "YouTube Channel",
+      durationMs: 180000,
+      artworkUrl: `https://img.youtube.com/vi/${targetId}/mqdefault.jpg`
+    });
   }
 });
 
