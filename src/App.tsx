@@ -1813,6 +1813,7 @@ export default function App() {
                   onPlayPreviousTrack={handlePlayPreviousTrack}
                   currentPlayingTrack={currentPlayingTrack}
                   isPlaying={isPlaying}
+                  setIsPlaying={setIsPlaying}
                 />
               </div>
             </motion.div>

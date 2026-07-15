@@ -26,6 +26,7 @@ interface QueuePanelProps {
   onPlayPreviousTrack: (track: MatchedTrack) => void;
   currentPlayingTrack: MatchedTrack | null;
   isPlaying: boolean;
+  setIsPlaying: (playing: boolean) => void;
 }
 
 export function QueuePanel({ 
@@ -36,7 +37,8 @@ export function QueuePanel({
   onPlayNextImmediate, 
   onPlayPreviousTrack, 
   currentPlayingTrack,
-  isPlaying
+  isPlaying,
+  setIsPlaying
 }: QueuePanelProps) {
   const [inputValue, setInputValue] = useState("");
   const [searching, setSearching] = useState(false);
@@ -475,98 +477,93 @@ export function QueuePanel({
       )}
 
       {currentPlayingTrack && (
-        <div className="flex flex-col gap-2 pb-5 border-b border-white/10">
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-blue-400 font-mono flex items-center gap-1.5">
+        <div className="flex flex-col gap-2.5 pb-6 border-b border-white/10 items-center justify-center">
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-blue-400 font-mono flex items-center gap-1.5 self-start">
             <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.8)]" /> Currently Playing
           </span>
-          <motion.div 
-            animate={{
-              boxShadow: [
-                "0 0 12px rgba(96,165,250,0.05), inset 0 0 12px rgba(96,165,250,0.02)",
-                "0 0 24px rgba(96,165,250,0.18), inset 0 0 16px rgba(96,165,250,0.05)",
-                "0 0 12px rgba(96,165,250,0.05), inset 0 0 12px rgba(96,165,250,0.02)"
-              ]
-            }}
-            transition={{
-              duration: 3,
-              repeat: Infinity,
-              ease: "easeInOut"
-            }}
-            className="flex items-center gap-4 p-4 rounded-2xl border border-blue-400/30 bg-[#0c0c0e] relative overflow-hidden group"
-          >
-            {/* Ambient blurred glow in background */}
-            <div className="absolute right-0 top-0 w-32 h-32 bg-blue-400/5 rounded-full blur-3xl pointer-events-none" />
+          
+          {/* Stunning Luminous Card Container */}
+          <div className="luminous-card-container w-full max-w-sm sm:max-w-md">
+            <input 
+              type="checkbox" 
+              id="luminous-checkbox" 
+              className="luminous-toggle-input" 
+              checked={isPlaying} 
+              onChange={(e) => setIsPlaying(e.target.checked)} 
+            />
             
-            {/* Retro-Modern Spinning Vinyl Record Artwork */}
-            <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-zinc-800/80 flex-shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.6)] relative bg-black flex items-center justify-center p-[2px]">
-              {/* Outer vinyl groove rings */}
-              <div className="absolute inset-0 rounded-full border border-white/5 pointer-events-none scale-[0.88]" />
-              <div className="absolute inset-0 rounded-full border border-white/5 pointer-events-none scale-[0.74]" />
-              <div className="absolute inset-0 rounded-full border border-white/10 pointer-events-none scale-[0.60]" />
-              
-              {/* Spinning vinyl content */}
-              <motion.div
-                animate={isPlaying ? { rotate: 360 } : { rotate: 0 }}
-                transition={{
-                  repeat: isPlaying ? Infinity : 0,
-                  duration: isPlaying ? 12 : 0.6,
-                  ease: "linear"
-                }}
-                className="w-full h-full rounded-full overflow-hidden relative"
-              >
-                <img
-                  src={currentPlayingTrack.artworkUrl || `https://img.youtube.com/vi/${currentPlayingTrack.videoId}/mqdefault.jpg`}
-                  alt={currentPlayingTrack.title}
-                  className="w-full h-full object-cover rounded-full"
-                  referrerPolicy="no-referrer"
-                />
-                
-                {/* Vinyl Center spindle hole and label */}
-                <div className="absolute inset-0 m-auto w-4 h-4 bg-zinc-950 rounded-full border-2 border-zinc-800 shadow-inner flex items-center justify-center">
-                  <div className="w-1.5 h-1.5 bg-zinc-700 rounded-full border border-zinc-500" />
+            <div className="luminous-card mx-auto">
+              <div className="luminous-light-layer">
+                <div className="luminous-slit"></div>
+                <div className="luminous-lumen">
+                  <div className="min"></div>
+                  <div className="mid"></div>
+                  <div className="hi"></div>
                 </div>
-              </motion.div>
-            </div>
+                <div className="luminous-darken">
+                  <div className="sl"></div>
+                  <div className="ll"></div>
+                  <div className="slt"></div>
+                  <div className="srt"></div>
+                </div>
+              </div>
+              
+              <div className="luminous-content">
+                {/* 3D Floating spinning vinyl record */}
+                <div className="luminous-icon">
+                  <div className="relative w-40 h-40 sm:w-44 sm:h-44 rounded-full bg-black border border-zinc-800 shadow-[0_15px_35px_rgba(0,0,0,0.8)] flex items-center justify-center p-1.5 overflow-hidden">
+                    {currentPlayingTrack.artworkUrl ? (
+                      <img
+                        src={currentPlayingTrack.artworkUrl}
+                        alt={currentPlayingTrack.title}
+                        className={`w-full h-full object-cover rounded-full transition-transform select-none ${
+                          isPlaying ? "spin-slow" : "spin-slow spin-paused"
+                        }`}
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <Music className="w-12 h-12 text-blue-400" />
+                    )}
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,rgba(255,255,255,0.06)_40%,transparent_50%,rgba(255,255,255,0.08)_60%,transparent_70%)] pointer-events-none rounded-full" />
+                    <div className="absolute w-8 h-8 bg-[#09090b] border border-zinc-700 rounded-full flex items-center justify-center pointer-events-none z-10">
+                      <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="luminous-bottom">
+                  <h3 className="luminous-title" title={currentPlayingTrack.title}>
+                    {currentPlayingTrack.title}
+                  </h3>
+                  <p className="luminous-description" title={currentPlayingTrack.artist}>
+                    {currentPlayingTrack.artist}
+                  </p>
+                  
+                  {/* Micro equalizer soundwave bars inside the bottom of the card */}
+                  <div className="absolute right-24 bottom-1.5 flex items-end gap-[2px] h-3.5 select-none pointer-events-none">
+                    {[1, 2, 3, 4].map((bar, i) => (
+                      <motion.span
+                        key={i}
+                        animate={isPlaying ? { height: [3, 14, 5, 11, 3] } : { height: 3 }}
+                        transition={{
+                          duration: 0.7 + i * 0.12,
+                          repeat: isPlaying ? Infinity : 0,
+                          repeatType: "reverse",
+                          ease: "easeInOut",
+                        }}
+                        className="w-[2px] bg-white/45 rounded-full"
+                      />
+                    ))}
+                  </div>
 
-            <div className="flex-1 min-w-0">
-              <span className="text-[8px] font-black tracking-widest text-blue-400 uppercase bg-blue-400/10 border border-blue-400/20 px-2 py-0.5 rounded-full inline-block mb-1 shadow-[0_0_8px_rgba(96,165,250,0.15)]">
-                Active Session
-              </span>
-              <h5 className="text-sm font-bold text-white truncate" title={currentPlayingTrack.title}>
-                {currentPlayingTrack.title}
-              </h5>
-              <p className="text-xs text-zinc-400 font-medium truncate mt-0.5" title={currentPlayingTrack.artist}>
-                {currentPlayingTrack.artist}
-              </p>
+                  <label htmlFor="luminous-checkbox" className="luminous-toggle">
+                    <div className="luminous-handle"></div>
+                    <div className="luminous-toggle-label">Play / Pause</div>
+                  </label>
+                </div>
+              </div>
             </div>
-            
-            {/* Highly Creative Glowing Equalizer Soundwave Visualizer */}
-            <div className="flex items-end justify-center gap-[3px] h-9 px-2.5 bg-black/40 rounded-xl border border-white/5 min-w-[76px]">
-              {[
-                { duration: 0.9, delay: 0.1, heights: [6, 24, 10, 32, 6] },
-                { duration: 1.2, delay: 0.3, heights: [10, 18, 30, 8, 10] },
-                { duration: 0.8, delay: 0.0, heights: [4, 32, 14, 20, 4] },
-                { duration: 1.3, delay: 0.4, heights: [14, 8, 26, 12, 14] },
-                { duration: 1.0, delay: 0.2, heights: [8, 22, 12, 30, 8] },
-                { duration: 1.1, delay: 0.5, heights: [12, 28, 6, 18, 12] },
-                { duration: 0.9, delay: 0.6, heights: [6, 16, 24, 10, 6] },
-                { duration: 0.7, delay: 0.1, heights: [8, 20, 12, 26, 8] },
-              ].map((bar, i) => (
-                <motion.span
-                  key={i}
-                  animate={isPlaying ? { height: bar.heights } : { height: 4 }}
-                  transition={{
-                    duration: isPlaying ? bar.duration : 0.3,
-                    delay: isPlaying ? bar.delay : 0,
-                    repeat: isPlaying ? Infinity : 0,
-                    repeatType: "reverse",
-                    ease: "easeInOut",
-                  }}
-                  className="w-[3px] bg-gradient-to-t from-blue-400 to-cyan-300 rounded-full shadow-[0_0_8px_rgba(96,165,250,0.5)]"
-                />
-              ))}
-            </div>
-          </motion.div>
+          </div>
         </div>
       )}
 
