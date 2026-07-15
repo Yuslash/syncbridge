@@ -10,10 +10,18 @@ export interface VersionInfo {
 }
 
 export const APP_VERSION_INFO: VersionInfo = {
-  version: "1.2.1",
+  version: "1.2.2",
   codename: "Glass Luminous",
   releaseDate: "2026-07-15",
   changelog: [
+    {
+      version: "1.2.2",
+      date: "2026-07-15",
+      changes: [
+        "Resolved the Vercel deployment module-resolution error ('Cannot find module /var/task/server imported from /var/task/api/index.js') by correctly enforcing ESM relative file-extension rules.",
+        "Verified clean build and runtime transpilation targets for absolute server-side resilience."
+      ]
+    },
     {
       version: "1.2.1",
       date: "2026-07-15",
