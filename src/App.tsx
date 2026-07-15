@@ -1838,7 +1838,7 @@ export default function App() {
               </div>
 
               {/* Home Tab Switcher */}
-              <div className="flex rounded-full bg-black/40 p-1 border border-white/10 max-w-sm mx-auto w-full mb-2">
+              <div className="flex rounded-full bg-black/40 p-1 border border-white/10 max-w-sm mx-auto w-full mb-6">
                 <button
                   onClick={() => setHomeTab('quick')}
                   className={`flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
@@ -1989,7 +1989,8 @@ export default function App() {
                     </div>
                   </motion.div>
                 ) : null}
-              </div>)}
+              </div>
+              )}
 
               {/* Sample playlists */}
               <div className="flex flex-col gap-3">
