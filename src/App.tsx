@@ -564,6 +564,47 @@ export default function App() {
     audio.crossOrigin = "anonymous";
     nativeAudioRef.current = audio;
 
+    // Web Audio API context setup for dynamic reactive spectrum
+    let audioCtx: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+    let source: MediaElementAudioSourceNode | null = null;
+
+    const setupWebAudio = () => {
+      if (audioCtx) return;
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) return;
+        audioCtx = new AudioContextClass();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        
+        // Note: Connecting MediaElementSource requires CORS permissions.
+        // We set audio.crossOrigin = "anonymous" above, but if a particular stream lacks CORS headers,
+        // the browser will block access. Our visualizer in QueuePanel handles this smoothly via an organic fall-back.
+        source = audioCtx.createMediaElementSource(audio);
+        source.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
+        (window as any).__syncbridge_analyser = analyser;
+        (window as any).__syncbridge_audio_ctx = audioCtx;
+        console.log("[Web Audio API] Successfully initialized AudioContext & AnalyserNode.");
+      } catch (err) {
+        console.warn("[Web Audio API] Failed to initialize analyzer:", err);
+      }
+    };
+
+    // Auto-setup and resume AudioContext on user interaction
+    const handleUserInteraction = () => {
+      setupWebAudio();
+      if (audioCtx && audioCtx.state === "suspended") {
+        audioCtx.resume().catch(e => console.warn("[Web Audio API] Resume failed:", e));
+      }
+    };
+
+    window.addEventListener("click", handleUserInteraction, { once: false, passive: true });
+    window.addEventListener("keydown", handleUserInteraction, { once: false, passive: true });
+    window.addEventListener("touchstart", handleUserInteraction, { once: false, passive: true });
+
     // Default continuous silent audio context to signal active background audio stream
     audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
     audio.loop = true;
@@ -614,6 +655,9 @@ export default function App() {
     }
 
     return () => {
+      window.removeEventListener("click", handleUserInteraction);
+      window.removeEventListener("keydown", handleUserInteraction);
+      window.removeEventListener("touchstart", handleUserInteraction);
       if (nativeAudioRef.current) {
         nativeAudioRef.current.pause();
         nativeAudioRef.current = null;
@@ -1788,7 +1832,7 @@ export default function App() {
   });
 
   return (
-    <div className={`font-sans text-[#fafafa] min-h-screen flex flex-col transition-all duration-500 ${isAmbientFocusMode ? 'bg-luminous-gradient pb-0 overflow-hidden select-none' : 'bg-[#09090b]'}`}>
+    <div className={`font-sans text-[#fafafa] min-h-screen flex flex-col w-full overflow-x-hidden transition-all duration-500 ${isAmbientFocusMode ? 'bg-luminous-gradient pb-0 overflow-hidden select-none' : 'bg-[#09090b]'}`}>
       {!isAmbientFocusMode && (
         <Header 
           user={user}
@@ -1874,7 +1918,7 @@ export default function App() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
-              className="max-w-3xl mx-auto flex flex-col gap-8 py-4"
+              className="w-full max-w-3xl mx-auto flex flex-col gap-8 py-4"
             >
               <div className="text-center flex flex-col gap-3 px-2">
                 <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.15rem] sm:tracking-[0.2rem] text-white bg-white/10 px-3 py-1 rounded border border-white/15 self-center">
