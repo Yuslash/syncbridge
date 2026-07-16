@@ -46,6 +46,8 @@ import {
   VolumeX,
   Maximize2,
   Minimize2,
+  Eye,
+  EyeOff,
   Radio
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -196,6 +198,30 @@ export default function App() {
   const [searchingChangeSuggestions, setSearchingChangeSuggestions] = useState(false);
   const [changeSearchQuery, setChangeSearchQuery] = useState("");
   const [isPlayerCollapsed, setIsPlayerCollapsed] = useState(false);
+  const [isAmbientFocusMode, setIsAmbientFocusMode] = useState(false);
+
+  // States and hook to support dragging and persisting the position of the collapsed player
+  const [collapsedPosition, setCollapsedPosition] = useState<{ x: number; y: number }>(() => {
+    try {
+      const saved = localStorage.getItem('syncbridge_collapsed_pos');
+      return saved ? JSON.parse(saved) : { x: 0, y: 0 };
+    } catch (e) {
+      return { x: 0, y: 0 };
+    }
+  });
+  const isDraggingCollapsedRef = React.useRef(false);
+  const [windowSize, setWindowSize] = useState({ 
+    width: typeof window !== 'undefined' ? window.innerWidth : 1200, 
+    height: typeof window !== 'undefined' ? window.innerHeight : 800 
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const playableTracks = React.useMemo(() => {
     return tracks.filter(t => t.videoId && t.status !== "not_found");
@@ -1762,20 +1788,35 @@ export default function App() {
   });
 
   return (
-    <div className="font-sans text-[#fafafa] min-h-screen flex flex-col pb-[280px] sm:pb-32 bg-[#09090b]">
-      <Header 
-        user={user}
-        onLogin={handleLogin}
-        onLogout={handleLogout}
-        isCloudActive={isFirebaseConfigured && !!auth}
-        onGoHome={handleGoHome}
-        onShowChangelog={() => setShowChangelogModal(true)}
-        version={APP_VERSION_INFO.version}
-      />
+    <div className={`font-sans text-[#fafafa] min-h-screen flex flex-col transition-all duration-500 ${isAmbientFocusMode ? 'bg-luminous-gradient pb-0 overflow-hidden select-none' : 'bg-[#09090b]'}`}>
+      {!isAmbientFocusMode && (
+        <Header 
+          user={user}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
+          isCloudActive={isFirebaseConfigured && !!auth}
+          onGoHome={handleGoHome}
+          onShowChangelog={() => setShowChangelogModal(true)}
+          version={APP_VERSION_INFO.version}
+        />
+      )}
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 md:px-6 pt-8">
+      {isAmbientFocusMode && (
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-2">
+          <button
+            onClick={() => setIsAmbientFocusMode(false)}
+            className="px-4 py-2 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white rounded-xl shadow-lg transition-all cursor-pointer flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-wider backdrop-blur-md"
+            title="Exit Ambient Focus Mode and show full workspace"
+          >
+            <Eye className="w-3.5 h-3.5 text-blue-400" />
+            <span>Show UI / Exit Focus</span>
+          </button>
+        </div>
+      )}
+
+      <main className={`transition-all duration-500 flex flex-col items-center justify-center ${isAmbientFocusMode ? 'w-full max-w-md mx-auto px-4 min-h-screen pt-0 flex-1' : 'flex-1 max-w-6xl w-full mx-auto px-4 md:px-6 pt-8 pb-[280px] sm:pb-32'}`}>
         {/* If we have an active playing track or loaded playlist, show a global tab header to switch between workspace and active player session */}
-        {(playlistMeta || currentPlayingTrack) && (
+        {!isAmbientFocusMode && (playlistMeta || currentPlayingTrack) && (
           <div className="flex items-center justify-between gap-4 mb-6 bg-white/5 p-1.5 rounded-2xl border border-white/10 max-w-md mx-auto sm:mx-0">
             <button
               onClick={() => setActiveTab('converter')}
@@ -1785,7 +1826,7 @@ export default function App() {
                   : "text-white/60 hover:text-white hover:bg-white/5"
               }`}
             >
-              {playlistMeta ? "Playlist Workspace" : "Home / Importer"}
+              {playlistMeta ? "Workspace" : "Home"}
             </button>
             <button
               onClick={() => setActiveTab('player')}
@@ -1796,13 +1837,13 @@ export default function App() {
               }`}
             >
               {currentPlayingTrack && <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
-              Player & Queue
+              Player
             </button>
           </div>
         )}
 
         <AnimatePresence mode="wait">
-          {activeTab === 'player' ? (
+          {(isAmbientFocusMode || activeTab === 'player') ? (
             <motion.div
               key="player-session"
               initial={{ opacity: 0, scale: 0.98 }}
@@ -1822,6 +1863,7 @@ export default function App() {
                   currentPlayingTrack={currentPlayingTrack}
                   isPlaying={isPlaying}
                   setIsPlaying={setIsPlaying}
+                  isAmbientFocusMode={isAmbientFocusMode}
                 />
               </div>
             </motion.div>
@@ -2987,6 +3029,20 @@ export default function App() {
                 <span className="hidden xl:inline">New Tab</span>
               </button>
 
+              {/* Focus Mode Button */}
+              <button
+                onClick={() => setIsAmbientFocusMode(!isAmbientFocusMode)}
+                className={`ml-1 px-2.5 py-1.5 border rounded-lg shadow-md transition-all cursor-pointer flex items-center gap-1.5 text-[9px] tracking-wide font-bold uppercase group/focus ${isAmbientFocusMode ? 'bg-blue-500/15 border-blue-400 text-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.2)]' : 'bg-zinc-900 hover:bg-[#1e1e24] border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-blue-400'}`}
+                title={isAmbientFocusMode ? "Exit Focus Mode" : "Focus Mode: Hide UI and center the Luminous Player card"}
+              >
+                {isAmbientFocusMode ? (
+                  <Eye className="w-3 h-3 text-blue-400 animate-pulse" />
+                ) : (
+                  <EyeOff className="w-3 h-3 text-zinc-400 group-hover/focus:text-blue-400 transition-colors" />
+                )}
+                <span className="hidden xl:inline">{isAmbientFocusMode ? "Exit Focus" : "Focus Mode"}</span>
+              </button>
+
               {/* Collapse Button */}
               <button
                 onClick={() => setIsPlayerCollapsed(true)}
@@ -3005,13 +3061,39 @@ export default function App() {
       <AnimatePresence>
         {isPlayerCollapsed && currentPlayingTrack && (
           <motion.div
-            initial={{ y: 80, opacity: 0, scale: 0.9 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 80, opacity: 0, scale: 0.9 }}
+            drag
+            dragMomentum={false}
+            dragElastic={0.05}
+            dragConstraints={{ 
+              left: -windowSize.width + 240, 
+              right: 20, 
+              top: -windowSize.height + 120, 
+              bottom: 20 
+            }}
+            onDragStart={() => {
+              isDraggingCollapsedRef.current = true;
+            }}
+            onDragEnd={(event, info) => {
+              const newX = collapsedPosition.x + info.offset.x;
+              const newY = collapsedPosition.y + info.offset.y;
+              setCollapsedPosition({ x: newX, y: newY });
+              localStorage.setItem('syncbridge_collapsed_pos', JSON.stringify({ x: newX, y: newY }));
+              setTimeout(() => {
+                isDraggingCollapsedRef.current = false;
+              }, 80);
+            }}
+            initial={{ opacity: 0, scale: 0.9, y: collapsedPosition.y + 80, x: collapsedPosition.x }}
+            animate={{ opacity: 1, scale: 1, y: collapsedPosition.y, x: collapsedPosition.x }}
+            exit={{ opacity: 0, scale: 0.9, y: collapsedPosition.y + 80, x: collapsedPosition.x }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            onClick={() => setIsPlayerCollapsed(false)}
-            className="fixed bottom-6 right-6 z-50 bg-[#0c0c0e]/95 border border-[#27272a]/80 backdrop-blur-xl px-4 py-2 rounded-full shadow-[0_10px_35px_rgba(0,0,0,0.8)] flex items-center gap-3 transition-all cursor-pointer hover:border-blue-400/50 hover:shadow-[0_12px_40px_rgba(59,130,246,0.2)] group select-none"
-            title="Click to expand player"
+            onClick={() => {
+              if (!isDraggingCollapsedRef.current) {
+                setIsPlayerCollapsed(false);
+              }
+            }}
+            style={{ touchAction: 'none' }}
+            className="fixed bottom-6 right-6 z-50 bg-[#0c0c0e]/95 border border-[#27272a]/80 backdrop-blur-xl px-4 py-2 rounded-full shadow-[0_10px_35px_rgba(0,0,0,0.8)] flex items-center gap-3 transition-colors cursor-grab active:cursor-grabbing hover:border-blue-400/50 hover:shadow-[0_12px_40px_rgba(59,130,246,0.2)] group select-none"
+            title="Drag to reposition • Click to expand player"
           >
             {/* Tiny rotating record */}
             <div className="relative w-8 h-8 rounded-full bg-black border border-zinc-800 shadow-md flex-shrink-0 flex items-center justify-center overflow-hidden">
@@ -3278,17 +3360,6 @@ export default function App() {
                     </ul>
                   </div>
                 ))}
-              </div>
-
-              {/* Diagnostics & Help section */}
-              <div className="p-4 bg-[#08080a] border-t border-zinc-800/60 text-[10px] text-zinc-500 flex flex-col gap-2">
-                <div className="flex items-center gap-1 text-zinc-400">
-                  <Info className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
-                  <span className="font-bold">Vercel Environment Keys Note</span>
-                </div>
-                <p className="leading-normal">
-                  If you recently added <span className="text-zinc-300 font-mono">YOUTUBE_API_KEY</span> on Vercel, please make sure you <span className="text-blue-400 font-semibold">redeploy</span> the project. Vercel environment variables only take effect during a new deployment build!
-                </p>
               </div>
 
               {/* Footer */}

@@ -27,6 +27,7 @@ interface QueuePanelProps {
   currentPlayingTrack: MatchedTrack | null;
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
+  isAmbientFocusMode?: boolean;
 }
 
 export function QueuePanel({ 
@@ -38,7 +39,8 @@ export function QueuePanel({
   onPlayPreviousTrack, 
   currentPlayingTrack,
   isPlaying,
-  setIsPlaying
+  setIsPlaying,
+  isAmbientFocusMode = false
 }: QueuePanelProps) {
   const [inputValue, setInputValue] = useState("");
   const [searching, setSearching] = useState(false);
@@ -282,6 +284,101 @@ export function QueuePanel({
     });
     setDraggedIndex(null);
   };
+
+  if (isAmbientFocusMode) {
+    return (
+      <div className="flex flex-col items-center justify-center w-full min-h-[50vh] py-4 transition-all duration-500">
+        {currentPlayingTrack ? (
+          <div className="luminous-card-container w-full max-w-sm sm:max-w-md scale-105 sm:scale-110 md:scale-115 transition-transform duration-500">
+            <input 
+              type="checkbox" 
+              id="luminous-checkbox" 
+              className="luminous-toggle-input" 
+              checked={isPlaying} 
+              onChange={(e) => setIsPlaying(e.target.checked)} 
+            />
+            
+            <div className="luminous-card mx-auto">
+              <div className="luminous-light-layer">
+                <div className="luminous-slit"></div>
+                <div className="luminous-lumen">
+                  <div className="min"></div>
+                  <div className="mid"></div>
+                  <div className="hi"></div>
+                </div>
+                <div className="luminous-darken">
+                  <div className="sl"></div>
+                  <div className="ll"></div>
+                  <div className="slt"></div>
+                  <div className="srt"></div>
+                </div>
+              </div>
+              
+              <div className="luminous-content">
+                {/* 3D Floating spinning vinyl record */}
+                <div className="luminous-icon">
+                  <div className="relative w-32 h-32 sm:w-36 sm:h-36 rounded-full bg-black border border-zinc-800 shadow-[0_15px_35px_rgba(0,0,0,0.8)] flex items-center justify-center p-1.5 overflow-hidden">
+                    {currentPlayingTrack.artworkUrl ? (
+                      <img
+                        src={currentPlayingTrack.artworkUrl}
+                        alt={currentPlayingTrack.title}
+                        className={`w-full h-full object-cover rounded-full transition-transform select-none ${
+                          isPlaying ? "spin-slow" : "spin-slow spin-paused"
+                        }`}
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <Music className="w-10 h-10 text-blue-400" />
+                    )}
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,rgba(255,255,255,0.06)_40%,transparent_50%,rgba(255,255,255,0.08)_60%,transparent_70%)] pointer-events-none rounded-full" />
+                    <div className="absolute w-7 h-7 bg-[#09090b] border border-zinc-700 rounded-full flex items-center justify-center pointer-events-none z-10">
+                      <div className="w-2 h-2 bg-white rounded-full" />
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="luminous-bottom">
+                  <h3 className="luminous-title" title={currentPlayingTrack.title}>
+                    {currentPlayingTrack.title}
+                  </h3>
+                  <p className="luminous-description" title={currentPlayingTrack.artist}>
+                    {currentPlayingTrack.artist}
+                  </p>
+                  
+                  {/* Micro equalizer soundwave bars inside the bottom of the card */}
+                  <div className="absolute right-24 bottom-1.5 flex items-end gap-[2px] h-3.5 select-none pointer-events-none">
+                    {[1, 2, 3, 4].map((bar, i) => (
+                      <motion.span
+                        key={i}
+                        animate={isPlaying ? { height: [3, 14, 5, 11, 3] } : { height: 3 }}
+                        transition={{
+                          duration: 0.7 + i * 0.12,
+                          repeat: isPlaying ? Infinity : 0,
+                          repeatType: "reverse",
+                          ease: "easeInOut",
+                        }}
+                        className="w-[2px] bg-white/45 rounded-full"
+                      />
+                    ))}
+                  </div>
+
+                  <label htmlFor="luminous-checkbox" className="luminous-toggle">
+                    <div className="luminous-handle"></div>
+                    <div className="luminous-toggle-label">Play / Pause</div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center text-white/50">
+            <Music className="w-12 h-12 text-zinc-500 mx-auto mb-3 animate-pulse" />
+            <p className="text-sm font-bold">No active playing track</p>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="vision-glass rounded-2xl p-4 sm:p-5 md:p-6 shadow-2xl relative flex flex-col gap-4 sm:gap-5 md:gap-6 w-full">

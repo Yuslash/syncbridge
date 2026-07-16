@@ -10,10 +10,51 @@ export interface VersionInfo {
 }
 
 export const APP_VERSION_INFO: VersionInfo = {
-  version: "1.2.6",
+  version: "1.3.2",
   codename: "Glass Luminous",
   releaseDate: "2026-07-16",
   changelog: [
+    {
+      version: "1.3.2",
+      date: "2026-07-16",
+      changes: [
+        "Shortened navigation tabs to clear single-word names ('Workspace' / 'Home' and 'Player') to prevent layout wrapping and vertical stretching on smaller screens.",
+        "Added fully-interactive dragging capability to the collapsed mini-player pill, with persistent local storage saving and restoration."
+      ]
+    },
+    {
+      version: "1.3.1",
+      date: "2026-07-16",
+      changes: [
+        "Removed the background of the player's outer panel container (.luminous-card-container) to make it fully transparent.",
+        "Ensured the player card floats cleanly directly over the app's beautiful radial dark carbon background, removing any overlapping dark blocks."
+      ]
+    },
+    {
+      version: "1.3.0",
+      date: "2026-07-16",
+      changes: [
+        "Enhanced Ambient Focus Mode by replacing the solid black backdrop with the majestic dark carbon-black radial gradient background.",
+        "Perfected the alignment of visual elements so the 3D spinning vinyl record centers in absolute harmony with the luxurious glowing card shadow layers."
+      ]
+    },
+    {
+      version: "1.2.9",
+      date: "2026-07-16",
+      changes: [
+        "Unified and darkened all workspace panels using an ultra-premium, dark carbon-black radial gradient (#18181c to #0d0d0f).",
+        "Completely resolved grey/light tone drift to deliver pristine, consistent high-contrast dark-mode backgrounds across converters, search blocks, playlists, and cards."
+      ]
+    },
+    {
+      version: "1.2.8",
+      date: "2026-07-16",
+      changes: [
+        "Slightly shifted the player's 3D spinning vinyl record higher (by 4px) to perfectly balance its alignment within the Luminous Card.",
+        "Created an immersive Focus / Ambient Mode toggle to hide all surrounding workspace elements, search inputs, tab controllers, and layout gradients.",
+        "Implemented a beautiful solid-black minimalist ambient canvas displaying only the centered Luminous Player Card, equipped with a clean float button to seamlessly exit Focus Mode."
+      ]
+    },
     {
       version: "1.2.6",
       date: "2026-07-16",
