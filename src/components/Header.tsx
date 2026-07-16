@@ -19,7 +19,7 @@ export function Header({
   isCloudActive, 
   onGoHome,
   onShowChangelog,
-  version = "1.2.2"
+  version = "1.2.6"
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/5 bg-[#0a0a0a]/20 backdrop-blur-md shadow-xl">

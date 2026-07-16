@@ -56,7 +56,7 @@ function isTrackObject(obj: any): boolean {
   if (!obj || typeof obj !== 'object') return false;
   const name = obj.name || obj.title;
   if (typeof name !== 'string' || !name.trim()) return false;
-  return !!(obj.artists || obj.artist || obj.artistsNames || obj.albumOfTrack || obj.album);
+  return !!(obj.artists || obj.artist || obj.artistsNames || obj.albumOfTrack || obj.album || obj.subtitle);
 }
 
 /**
@@ -80,6 +80,8 @@ function parseTrack(t: any) {
     artist = t.artistsNames.filter(Boolean).join(", ");
   } else if (t.profile && typeof t.profile === 'object') {
     artist = t.profile.name || "Unknown Artist";
+  } else if (typeof t.subtitle === 'string' && t.subtitle.trim()) {
+    artist = t.subtitle;
   }
 
   const album = (t.album && typeof t.album === 'object') ? (t.album.name || "") : (t.albumName || "");
@@ -115,7 +117,7 @@ function parseTrack(t: any) {
     artworkUrl = t.coverUrl;
   }
 
-  const durationMs = t.duration_ms || t.durationMs || 0;
+  const durationMs = t.duration || t.duration_ms || t.durationMs || 0;
 
   return { title, artist, album, durationMs, artworkUrl };
 }
@@ -192,6 +194,42 @@ function findTracksRecursive(val: any, foundLists: any[][]): void {
  */
 function tryRegexAndJsonParse(html: string): { playlistName: string; playlistDescription: string; tracks: any[] } | null {
   try {
+    // 1. Direct check for official Spotify __NEXT_DATA__ containing complete hydrations
+    const nextDataMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+    if (nextDataMatch) {
+      try {
+        const parsed = JSON.parse(nextDataMatch[1].trim());
+        const entity = parsed.props?.pageProps?.state?.data?.entity;
+        if (entity && Array.isArray(entity.trackList)) {
+          const playlistName = entity.title || entity.name || "Imported Spotify Playlist";
+          const playlistDescription = entity.subtitle || "";
+          const defaultCover = entity.coverArt?.sources?.[0]?.url || "";
+          
+          const tracks = entity.trackList.map((t: any) => {
+            let artworkUrl = t.coverArt?.sources?.[0]?.url || defaultCover;
+            return {
+              title: t.title || t.name || "Unknown Track",
+              artist: t.subtitle || (Array.isArray(t.artists) ? t.artists.map((a: any) => a.name).join(", ") : "Unknown Artist"),
+              album: t.album?.name || "",
+              durationMs: t.duration || t.duration_ms || t.durationMs || 180000,
+              artworkUrl: artworkUrl
+            };
+          });
+
+          if (tracks.length > 0) {
+            console.log(`[Spotify Engine] Found ${tracks.length} tracks using premium direct __NEXT_DATA__ parser.`);
+            return {
+              playlistName,
+              playlistDescription,
+              tracks
+            };
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[Spotify Engine] Direct __NEXT_DATA__ parse failed, continuing with regular regex parsing:`, e?.message || e);
+      }
+    }
+
     const scriptRegex = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
     let match;
     
@@ -575,6 +613,56 @@ function cleanQueryTerm(artist: string, title: string): { cleanArtist: string; c
   return { cleanArtist, cleanTitle };
 }
 
+function decodeHTMLEntities(str: string): string {
+  if (!str) return "";
+  return str
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#x2F;/g, "/")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#(\d+);/g, (match, dec) => {
+      try {
+        return String.fromCharCode(parseInt(dec, 10));
+      } catch (e) {
+        return match;
+      }
+    })
+    .replace(/&#x([a-fA-F0-9]+);/g, (match, hex) => {
+      try {
+        return String.fromCharCode(parseInt(hex, 16));
+      } catch (e) {
+        return match;
+      }
+    });
+}
+
+function parseISO8601Duration(durationStr: string): { durationMs: number; durationFormatted: string } {
+  const regex = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/;
+  const matches = durationStr.match(regex);
+  if (!matches) {
+    return { durationMs: 180000, durationFormatted: "3:00" };
+  }
+  const hours = parseInt(matches[1] || "0", 10);
+  const minutes = parseInt(matches[2] || "0", 10);
+  const seconds = parseInt(matches[3] || "0", 10);
+
+  const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+  const totalMs = totalSeconds * 1000;
+
+  let formatted = "";
+  if (hours > 0) {
+    formatted += hours + ":" + (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+  } else {
+    formatted += minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+  }
+
+  return { durationMs: totalMs, durationFormatted: formatted };
+}
+
 interface YouTubeResult {
   videoId: string;
   title: string;
@@ -693,8 +781,8 @@ async function fallbackSearchYouTube(query: string): Promise<YouTubeResult[]> {
               const vr = item.videoRenderer;
               if (vr && vr.videoId) {
                 const id = vr.videoId;
-                const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || "Unknown Track";
-                const channel = vr.ownerText?.runs?.[0]?.text || vr.shortBylineText?.runs?.[0]?.text || "Unknown Channel";
+                const title = decodeHTMLEntities(vr.title?.runs?.[0]?.text || vr.title?.simpleText || "Unknown Track");
+                const channel = decodeHTMLEntities(vr.ownerText?.runs?.[0]?.text || vr.shortBylineText?.runs?.[0]?.text || "Unknown Channel");
                 const lengthStr = vr.lengthText?.simpleText || vr.lengthText?.runs?.[0]?.text || "";
                 const thumb = vr.thumbnail?.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${id}/mqdefault.jpg`;
                 
@@ -743,8 +831,8 @@ async function fallbackSearchYouTube(query: string): Promise<YouTubeResult[]> {
               const vr = JSON.parse(jsonStr);
               if (vr && vr.videoId) {
                 const id = vr.videoId;
-                const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || "Unknown Track";
-                const channel = vr.ownerText?.runs?.[0]?.text || vr.shortBylineText?.runs?.[0]?.text || "Unknown Channel";
+                const title = decodeHTMLEntities(vr.title?.runs?.[0]?.text || vr.title?.simpleText || "Unknown Track");
+                const channel = decodeHTMLEntities(vr.ownerText?.runs?.[0]?.text || vr.shortBylineText?.runs?.[0]?.text || "Unknown Channel");
                 const lengthStr = vr.lengthText?.simpleText || vr.lengthText?.runs?.[0]?.text || "";
                 const thumb = vr.thumbnail?.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${id}/mqdefault.jpg`;
                 
@@ -889,14 +977,50 @@ async function searchYouTubeWithFallback(query: string, limit: number = 10): Pro
           const apiData = await apiResponse.json();
           if (apiData.items && apiData.items.length > 0) {
             console.log(`[YouTube Search Wrapper] Successfully returned ${apiData.items.length} items from official YouTube API`);
-            return apiData.items.map((item: any) => ({
-              id: item.id?.videoId,
-              title: item.snippet?.title || "Unknown Title",
-              channel: { name: item.snippet?.channelTitle || "Unknown Channel" },
-              durationFormatted: "3:00",
-              duration: 180000,
-              thumbnail: { url: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || "" }
-            })).filter((c: any) => c.id);
+            const filteredItems = apiData.items.filter((item: any) => item.id?.videoId);
+            const videoIds = filteredItems.map((item: any) => item.id.videoId);
+
+            // Fetch durations for these video IDs in a batch call
+            let durationMap: Record<string, { duration: number; durationFormatted: string }> = {};
+            try {
+              const videoController = new AbortController();
+              const videoTimeoutId = setTimeout(() => videoController.abort(), 2000); // 2s timeout for detail fetch
+              const videoResponse = await fetch(
+                `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoIds.join(",")}&key=${apiKey}`,
+                { signal: videoController.signal }
+              ).finally(() => clearTimeout(videoTimeoutId));
+
+              if (videoResponse.ok) {
+                const videoData = await videoResponse.json();
+                if (videoData.items) {
+                  for (const vItem of videoData.items) {
+                    const isoDuration = vItem.contentDetails?.duration;
+                    if (isoDuration) {
+                      const parsed = parseISO8601Duration(isoDuration);
+                      durationMap[vItem.id] = {
+                        duration: parsed.durationMs,
+                        durationFormatted: parsed.durationFormatted
+                      };
+                    }
+                  }
+                }
+              }
+            } catch (videoErr: any) {
+              console.warn(`[YouTube Search Wrapper] Batch video duration fetch failed: ${videoErr?.message || videoErr}`);
+            }
+
+            return filteredItems.map((item: any) => {
+              const videoId = item.id.videoId;
+              const durationInfo = durationMap[videoId] || { duration: 180000, durationFormatted: "3:00" };
+              return {
+                id: videoId,
+                title: decodeHTMLEntities(item.snippet?.title || "Unknown Title"),
+                channel: { name: decodeHTMLEntities(item.snippet?.channelTitle || "Unknown Channel") },
+                durationFormatted: durationInfo.durationFormatted,
+                duration: durationInfo.duration,
+                thumbnail: { url: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || "" }
+              };
+            });
           }
         } else {
           const errorText = await apiResponse.text();
@@ -933,8 +1057,8 @@ async function searchYouTubeWithFallback(query: string, limit: number = 10): Pro
 
     return candidates.map(c => {
       const safeId = c?.id || "";
-      const safeTitle = c?.title || "Unknown Title";
-      const safeChannelName = c?.channel?.name || "Unknown Channel";
+      const safeTitle = decodeHTMLEntities(c?.title || "Unknown Title");
+      const safeChannelName = decodeHTMLEntities(c?.channel?.name || "Unknown Channel");
       const safeDuration = c?.durationFormatted || "3:00";
       const safeDurationMs = typeof c?.duration === "number" ? c.duration : 180000;
       const safeThumbnail = c?.thumbnail?.url || `https://img.youtube.com/vi/${safeId}/mqdefault.jpg`;

@@ -511,7 +511,7 @@ export function QueuePanel({
               <div className="luminous-content">
                 {/* 3D Floating spinning vinyl record */}
                 <div className="luminous-icon">
-                  <div className="relative w-40 h-40 sm:w-44 sm:h-44 rounded-full bg-black border border-zinc-800 shadow-[0_15px_35px_rgba(0,0,0,0.8)] flex items-center justify-center p-1.5 overflow-hidden">
+                  <div className="relative w-32 h-32 sm:w-36 sm:h-36 rounded-full bg-black border border-zinc-800 shadow-[0_15px_35px_rgba(0,0,0,0.8)] flex items-center justify-center p-1.5 overflow-hidden">
                     {currentPlayingTrack.artworkUrl ? (
                       <img
                         src={currentPlayingTrack.artworkUrl}
@@ -522,11 +522,11 @@ export function QueuePanel({
                         referrerPolicy="no-referrer"
                       />
                     ) : (
-                      <Music className="w-12 h-12 text-blue-400" />
+                      <Music className="w-10 h-10 text-blue-400" />
                     )}
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,rgba(255,255,255,0.06)_40%,transparent_50%,rgba(255,255,255,0.08)_60%,transparent_70%)] pointer-events-none rounded-full" />
-                    <div className="absolute w-8 h-8 bg-[#09090b] border border-zinc-700 rounded-full flex items-center justify-center pointer-events-none z-10">
-                      <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                    <div className="absolute w-7 h-7 bg-[#09090b] border border-zinc-700 rounded-full flex items-center justify-center pointer-events-none z-10">
+                      <div className="w-2 h-2 bg-white rounded-full" />
                     </div>
                   </div>
                 </div>

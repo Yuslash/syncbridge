@@ -258,7 +258,7 @@ body {
   overflow: hidden;
   position: relative;
   width: 100%;
-  padding-top: 13rem;
+  padding-top: 3rem;
   padding-bottom: 2rem;
   background: #1e1e1e;
   background: radial-gradient(circle at 50% 30%, #2a2a2a 0%, #131313 64%);
@@ -519,7 +519,7 @@ body {
 
 .luminous-icon {
   position: absolute;
-  top: -13rem;
+  top: 2rem;
   left: 0;
   right: 0;
   margin: auto;

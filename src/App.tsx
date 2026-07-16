@@ -9,6 +9,8 @@ import {
   Youtube, 
   Link2, 
   ChevronRight, 
+  ChevronDown,
+  ChevronUp,
   AlertCircle, 
   CheckCircle2, 
   Loader2, 
@@ -193,6 +195,7 @@ export default function App() {
   const [changeSongSuggestions, setChangeSongSuggestions] = useState<any[]>([]);
   const [searchingChangeSuggestions, setSearchingChangeSuggestions] = useState(false);
   const [changeSearchQuery, setChangeSearchQuery] = useState("");
+  const [isPlayerCollapsed, setIsPlayerCollapsed] = useState(false);
 
   const playableTracks = React.useMemo(() => {
     return tracks.filter(t => t.videoId && t.status !== "not_found");
@@ -224,6 +227,7 @@ export default function App() {
     setActiveSingleTrack(track);
     setActivePlayingTrackId(track.id);
     setIsPlaying(true);
+    setIsPlayerCollapsed(false);
     setCurrentTimeSecs(0);
     const estSecs = track.durationMs ? Math.floor(track.durationMs / 1000) : 180;
     setTrackDurationSecs(estSecs === 0 ? 180 : estSecs);
@@ -2736,10 +2740,10 @@ export default function App() {
         {currentPlayingTrack && (
           <motion.div
             initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
+            animate={{ y: isPlayerCollapsed ? 150 : 0, opacity: isPlayerCollapsed ? 0 : 1 }}
             exit={{ y: 100, opacity: 0 }}
             transition={{ type: "spring", stiffness: 220, damping: 25 }}
-            className="fixed bottom-0 left-0 right-0 z-40 bg-[#0c0c0e]/95 border-t border-[#27272a]/70 backdrop-blur-xl shadow-[0_-10px_35px_rgba(0,0,0,0.6)] px-4 py-3.5 md:px-6 flex flex-col md:flex-row items-center justify-between gap-3 text-white transition-all select-none"
+            className={`fixed bottom-0 left-0 right-0 z-40 bg-[#0c0c0e]/95 border-t border-[#27272a]/70 backdrop-blur-xl shadow-[0_-10px_35px_rgba(0,0,0,0.6)] px-4 py-3.5 md:px-6 flex flex-col md:flex-row items-center justify-between gap-3 text-white transition-all select-none ${isPlayerCollapsed ? 'pointer-events-none' : ''}`}
           >
             {/* Elegant warning pill floating above player if inside iframe */}
             {isInsideIframe && (
@@ -2982,6 +2986,65 @@ export default function App() {
                 <Maximize2 className="w-3 h-3 text-blue-400 animate-pulse" />
                 <span className="hidden xl:inline">New Tab</span>
               </button>
+
+              {/* Collapse Button */}
+              <button
+                onClick={() => setIsPlayerCollapsed(true)}
+                className="ml-1 px-2.5 py-1.5 bg-zinc-900 hover:bg-[#1e1e24] border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-blue-400 rounded-lg shadow-md transition-all cursor-pointer flex items-center gap-1.5 text-[9px] tracking-wide font-bold uppercase group/collapse"
+                title="Collapse the bottom audio player into a sleek floating disk badge"
+              >
+                <ChevronDown className="w-3 h-3 text-zinc-400 group-hover/collapse:text-blue-400 transition-colors" />
+                <span className="hidden xl:inline">Collapse</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Collapsed Mini Player Pill */}
+      <AnimatePresence>
+        {isPlayerCollapsed && currentPlayingTrack && (
+          <motion.div
+            initial={{ y: 80, opacity: 0, scale: 0.9 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: 80, opacity: 0, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            onClick={() => setIsPlayerCollapsed(false)}
+            className="fixed bottom-6 right-6 z-50 bg-[#0c0c0e]/95 border border-[#27272a]/80 backdrop-blur-xl px-4 py-2 rounded-full shadow-[0_10px_35px_rgba(0,0,0,0.8)] flex items-center gap-3 transition-all cursor-pointer hover:border-blue-400/50 hover:shadow-[0_12px_40px_rgba(59,130,246,0.2)] group select-none"
+            title="Click to expand player"
+          >
+            {/* Tiny rotating record */}
+            <div className="relative w-8 h-8 rounded-full bg-black border border-zinc-800 shadow-md flex-shrink-0 flex items-center justify-center overflow-hidden">
+              {currentPlayingTrack.artworkUrl ? (
+                <img
+                  src={currentPlayingTrack.artworkUrl}
+                  alt={currentPlayingTrack.title}
+                  className={`w-full h-full object-cover ${isPlaying ? 'spin-slow' : 'spin-slow spin-paused'}`}
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <Music className="w-3.5 h-3.5 text-blue-400" />
+              )}
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,rgba(255,255,255,0.06)_40%,transparent_50%,rgba(255,255,255,0.08)_60%,transparent_70%)] pointer-events-none rounded-full" />
+              <div className="absolute w-2 h-2 bg-[#09090b] border border-zinc-700 rounded-full flex items-center justify-center pointer-events-none z-10">
+                <div className="w-0.5 h-0.5 bg-white rounded-full" />
+              </div>
+            </div>
+
+            {/* Title & status */}
+            <div className="flex flex-col text-left max-w-[140px] md:max-w-[200px] min-w-0">
+              <span className="text-[11px] font-bold text-white truncate leading-tight group-hover:text-blue-400 transition-colors">
+                {currentPlayingTrack.title}
+              </span>
+              <span className="text-[9px] text-[#71717a] truncate mt-0.5 leading-none flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${isPlaying ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-500'}`} />
+                {isPlaying ? "Playing" : "Paused"}
+              </span>
+            </div>
+
+            {/* Blue Expand circle */}
+            <div className="w-6 h-6 rounded-full bg-blue-400 group-hover:bg-blue-300 text-black flex items-center justify-center shadow-md transition-all group-hover:scale-105">
+              <ChevronUp className="w-4 h-4 text-black" />
             </div>
           </motion.div>
         )}
